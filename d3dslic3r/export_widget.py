@@ -15,6 +15,7 @@ import numpy as np
 
 from PyQt5 import QtGui, QtWidgets, QtCore, QtSvg
 from PyQt5.QtCore import Qt
+from pkg_resources import Requirement, resource_filename
 
 class export_widget(QtWidgets.QDialog):
 

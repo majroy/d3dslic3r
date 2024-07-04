@@ -20,6 +20,7 @@ from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib import rc
 from matplotlib.patches import Polygon
+from pkg_resources import Requirement, resource_filename
 
 from d3dslic3r.d3dslic3r_common import *
 from d3dslic3r.export_widget import export_widget
@@ -557,7 +558,6 @@ class interactor(QtWidgets.QWidget):
         '''
         Create pop-up which shows the user what's going to happen
         '''
-        print(self.slice_data[0].paths[0])
         ew = export_widget(self, self.slice_data)
         ew.exec_()
 
