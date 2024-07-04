@@ -28,5 +28,4 @@ setup(name = 'd3dslic3r',
     packages=['d3dslic3r', 'd3dslic3r.meta'],
     package_data = {'d3dslic3r' : ['README.MD',], 'd3dslic3r.meta' : ['*.*',] },
     include_package_data=True
-
     )

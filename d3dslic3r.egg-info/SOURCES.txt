@@ -3,6 +3,7 @@ MANIFEST.in
 README.MD
 README.md
 setup.py
+d3dslic3r/__init__.py
 d3dslic3r/d3dslic3r_common.py
 d3dslic3r/export_widget.py
 d3dslic3r/main.py
