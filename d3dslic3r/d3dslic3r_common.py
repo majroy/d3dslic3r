@@ -11,14 +11,14 @@ from shapely.ops import unary_union, polygonize
 import shapely.geometry as geometry
 from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper, JT_SQUARE, ET_CLOSEDPOLYGON
 from scipy.interpolate import interp1d
-from importlib.resources import Resource
+from pkg_resources import Requirement, resource_filename
 
 
 def make_splash():
     '''
     Makes and returns a Qt splash window object
     '''
-    spl_fname=resource_filename("d3slic3r","meta/Logo.png")
+    spl_fname=resource_filename("d3dslic3r","meta/Logo.png")
     splash_pix = QtGui.QPixmap(spl_fname,'PNG')
     splash = QtWidgets.QSplashScreen(splash_pix, QtCore.Qt.SplashScreen)
     splash.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)

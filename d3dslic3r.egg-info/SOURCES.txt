@@ -13,6 +13,7 @@ d3dslic3r.egg-info/dependency_links.txt
 d3dslic3r.egg-info/requires.txt
 d3dslic3r.egg-info/top_level.txt
 d3dslic3r/meta/Logo.png
+d3dslic3r/meta/__init__.py
 d3dslic3r/meta/background.png
 d3dslic3r/meta/clippy.png
 d3dslic3r/meta/dippy.png
