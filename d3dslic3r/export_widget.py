@@ -91,12 +91,13 @@ class export_widget(QtWidgets.QDialog):
         
         i = 0
         for slice_obj in self.slice_data:
-            j = 0
+            
             if slice_obj is not None:
+                j = 0
                 if slice_obj.paths is not None:
                     for path in slice_obj.paths:
                         np.savetxt(os.path.join(self.work_dir_path.text(),"%s_%i_%i.txt"%(self.prefix.text(),i,j)),path)
-                    j+=1
+                        j+=1
             i+=1
         
         pix_map2 = QtGui.QPixmap(resource_filename("d3dslic3r","meta/dippy.png"))
