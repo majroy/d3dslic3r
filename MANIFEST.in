@@ -1,0 +1,7 @@
+include d3dslic3r/meta/background.png
+include d3dslic3r/meta/clippy.png
+include d3dslic3r/meta/dippy.png
+include d3dslic3r/meta/Logo.png
+include d3dslic3r/meta/noslice.png
+include d3dslic3r/meta/sys_icon.png
+include README.MD
