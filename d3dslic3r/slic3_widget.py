@@ -219,7 +219,7 @@ class main_window(object):
         ax = plt.gca()
         ax.set_xlim([0, 1])
         ax.set_ylim([0, 1])
-        img = plt.imread(resource_filename("d3slic3r","meta/noslice.png"))
+        img = plt.imread(resource_filename("d3dslic3r","meta/noslice.png"))
         plt.text(0.5, 0.18, "No slice", ha='center', style='italic', fontweight = 'bold', color='darkgray', alpha=0.5, size= 18)
         plt.imshow(img, zorder=1, extent=[0.25, 0.75, 0.25, 0.75], alpha=0.5)
         plt.axis('off')
