@@ -40,7 +40,7 @@ def make_transformation_button_layout(parent_window):
 
 
 def make_translate_button(parent_window):
-    ico = importlib.resources.files('OpenRS') / 'meta/translate_icon.png'
+    ico = importlib.resources.files('d3dslic3r') / 'meta/translate_icon.png'
     with importlib.resources.as_file(ico) as path:
         translate_icon = QtGui.QIcon(QtGui.QIcon(path.__str__()))
     translate_drop_button = QtWidgets.QToolButton()
@@ -56,7 +56,7 @@ def make_translate_button(parent_window):
     return translate_drop_button
 
 def make_rotate_button(parent_window):
-    ico = importlib.resources.files('OpenRS') / 'meta/rotate_icon.png'
+    ico = importlib.resources.files('d3dslic3r') / 'meta/rotate_icon.png'
     with importlib.resources.as_file(ico) as path:
         rotate_icon = QtGui.QIcon(QtGui.QIcon(path.__str__()))
     rotate_drop_button = QtWidgets.QToolButton()

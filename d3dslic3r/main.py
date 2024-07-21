@@ -16,8 +16,8 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QTimer
 import vtk
 import d3dslic3r.slic3_widget as slic3_widget
-from d3dslic3r.d3dslic3r_common import make_splash
-from pkg_resources import Requirement, resource_filename
+from d3dslic3r.d3dslic3r_gui_common import make_splash
+import importlib.resources
 
 class main_window(QtWidgets.QMainWindow):
     '''
@@ -26,7 +26,9 @@ class main_window(QtWidgets.QMainWindow):
     def __init__(self, app):
         super().__init__()
         
-        self.setWindowIcon(QtGui.QIcon(resource_filename("d3dslic3r","meta/sys_icon.png")))
+        ico = importlib.resources.files('d3dslic3r') / 'meta/sys_icon.png'
+        with importlib.resources.as_file(ico) as path:
+            self.setWindowIcon(QtGui.QIcon(path.__str__()))
         self.setWindowTitle("d3dslic3r - main v%s" %__version__)
         if os.name == 'nt':
             myappid = 'd3dslic3r.main.%s'%__version__ # arbitrary string
