@@ -4,4 +4,6 @@ include d3dslic3r/meta/dippy.png
 include d3dslic3r/meta/Logo.png
 include d3dslic3r/meta/noslice.png
 include d3dslic3r/meta/sys_icon.png
+include d3dslic3r/meta/translate_icon.png
+include d3dslic3r/meta/rotate_icon.png
 include README.MD

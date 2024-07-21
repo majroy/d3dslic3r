@@ -2,7 +2,7 @@
 
 <span>![<span>Logo</span>](assets/Logo.png)</span> 
 
-DED SLICER (ded ˈslaɪ.sər) or dee three dee slick three arrr is a utility for discombobulating geometry into paths for direct energy deposition that might work. Garantees are as firm as the current documentation. Start it up, click the buttons, read the tool tips and see what it does.
+DED SLICER (ded ˈslaɪ.sər) or dee three dee slick three arrr is a utility for discombobulating geometry into paths for direct energy deposition. Guarantees of it working are as firm as the extent of the current documentation. Start it up, click the buttons, read the tool tips and see what it does.
 
 # Installation
 Install it from source using the tarball in the dist folder:

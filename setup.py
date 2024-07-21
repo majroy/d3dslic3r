@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 
 setup(name = 'd3dslic3r',
-    version = '0.1',
+    version = '0.2',
     description = 'DED SLICER',
     long_description = 'https://github.com/majroy/d3dslic3r',
     url = 'https://github.com/majroy/d3dslic3r',
