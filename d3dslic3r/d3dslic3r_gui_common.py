@@ -83,7 +83,7 @@ def make_splash():
     Makes and returns a Qt splash window object
     '''
     spl_fname = importlib.resources.files('d3dslic3r') / 'meta/Logo.png'
-    splash_pix = QtGui.QPixmap(spl_fname,'PNG')
+    splash_pix = QtGui.QPixmap(spl_fname.__str__(),'PNG')
     splash = QtWidgets.QSplashScreen(splash_pix, QtCore.Qt.SplashScreen)
     splash.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
     
@@ -98,7 +98,6 @@ def make_splash():
 
 def make_logo(ren):
     spl_fname = importlib.resources.files('d3dslic3r') / 'meta/background.png'
-    # spl_fname=resource_filename("d3dslic3r","meta/background.png")
     img_reader = vtk.vtkPNGReader()
     img_reader.SetFileName(spl_fname)
     img_reader.Update()
