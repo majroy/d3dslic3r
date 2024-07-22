@@ -14,20 +14,16 @@ import os, sys
 import numpy as np
 import vtk
 from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
-from vtk.util.numpy_support import vtk_to_numpy as v2n
 from PyQt5 import QtGui, QtWidgets, QtCore
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
 from matplotlib import rc
 from matplotlib.patches import Polygon
-import importlib.resources
+from pkg_resources import Requirement, resource_filename
 
 from d3dslic3r.d3dslic3r_common import *
-from d3dslic3r.d3dslic3r_gui_common import *
 from d3dslic3r.export_widget import export_widget
-from d3dslic3r.transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
-
 
 def launch(*args, **kwargs):
     '''
@@ -49,7 +45,7 @@ def launch(*args, **kwargs):
     else:
         return window
 
-class main_window(QtWidgets.QWidget):
+class main_window(object):
     """
     Generic object containing all UI
     """
@@ -65,7 +61,6 @@ class main_window(QtWidgets.QWidget):
         else:
             self.centralWidget=MainWindow
         MainWindow.setWindowTitle("slic3 widget v%s" %__version__)
-        MainWindow.setMinimumSize(QtCore.QSize(500, 500)) #figsize(8,6)
         
         #create new layout to hold both VTK and Qt interactors
         mainlayout=QtWidgets.QHBoxLayout(self.centralWidget)
@@ -88,7 +83,7 @@ class main_window(QtWidgets.QWidget):
         io_font = QtGui.QFont("Helvetica")
         
         #make display layout
-        io_box = QtWidgets.QGroupBox("I/O")
+        io_box = QtWidgets.QGroupBox('I/O')
         #buttons
         self.load_button = QtWidgets.QPushButton('Load')
         self.load_label = QtWidgets.QLabel("Nothing loaded.")
@@ -109,23 +104,6 @@ class main_window(QtWidgets.QWidget):
         io_layout.addWidget(self.slice_num_cb,0,1,1,1)
         io_layout.addWidget(self.export_slice,0,2,1,1)
         io_layout.addWidget(self.load_label,1,0,1,3)
-        
-        
-        #Geometry manipulation layout
-        geo_button_layout = QtWidgets.QGridLayout()
-        self.geo_box = collapsible_box("Geometry manipulation")
-        self.op_slider_label = QtWidgets.QLabel("Opacity:")
-        self.op_slider = QtWidgets.QSlider(QtCore.Qt.Horizontal)
-        self.op_slider.setRange(0,100)
-        self.op_slider.setSliderPosition(100)
-        
-        geo_button_layout.addWidget(self.op_slider_label,0,0,1,1)
-        geo_button_layout.addWidget(self.op_slider,0,1,1,1)
-        geo_button_layout.addLayout(make_transformation_button_layout(self),1,0,1,2)
-        geo_button_layout.setColumnStretch(0, 0)
-        geo_button_layout.setColumnStretch(1, 1)
-        
-        self.geo_box.setEnabled(False)
         
         #make slice layout
         self.slice_box = QtWidgets.QGroupBox('Slice')
@@ -242,7 +220,7 @@ class main_window(QtWidgets.QWidget):
         ax = plt.gca()
         ax.set_xlim([0, 1])
         ax.set_ylim([0, 1])
-        img = plt.imread(importlib.resources.files('d3dslic3r') / 'meta/noslice.png')
+        img = plt.imread(resource_filename("d3dslic3r","meta/noslice.png"))
         plt.text(0.5, 0.18, "No slice", ha='center', style='italic', fontweight = 'bold', color='darkgray', alpha=0.5, size= 18)
         plt.imshow(img, zorder=1, extent=[0.25, 0.75, 0.25, 0.75], alpha=0.5)
         plt.axis('off')
@@ -259,6 +237,7 @@ class main_window(QtWidgets.QWidget):
         outline_mod_layout.addWidget(self.alpha_pb,0,2,1,1)
         
         #add layouts to boxes & main widgets to main layouts
+        io_box.setLayout(io_layout)
         self.slice_box.setLayout(slice_layout)
         self.path_box.setLayout(path_layout)
         outline_mod_box.setLayout(outline_mod_layout)
@@ -273,12 +252,8 @@ class main_window(QtWidgets.QWidget):
         path_layout.addWidget(outline_mod_box)
         path_layout.addWidget(sep)
         
-        
         lvlayout=QtWidgets.QVBoxLayout()
         lvlayout.addWidget(io_box)
-        io_box.setLayout(io_layout)
-        lvlayout.addWidget(self.geo_box)
-        self.geo_box.set_content_layout(geo_button_layout)
         lvlayout.addWidget(self.slice_box)
         lvlayout.addWidget(self.path_box)
 
@@ -314,17 +289,9 @@ class interactor(QtWidgets.QWidget):
         
         make_logo(self.ren)
         
-        self.picking = False
         self.slice_data = []
         
         self.ui.load_button.clicked.connect(self.load_stl)
-        
-        self.ui.op_slider.valueChanged[int].connect(self.change_opacity)
-        self.ui.trans_widget.trans_origin_button.clicked.connect(self.apply_trans)
-        self.ui.trans_reset_button.clicked.connect(self.reset_trans)
-        self.ui.trans_widget.choose_vertex_button.clicked.connect(self.actuate_vertex_select)
-        self.ui.rotation_widget.trans_origin_button.clicked.connect(self.apply_rotation)
-        
         self.ui.update_slice_button.clicked.connect(self.do_slice)
         self.ui.slice_num_cb.currentIndexChanged.connect(self.draw_slice)
         self.ui.alpha_pb.clicked.connect(self.get_alpha_shape)
@@ -386,13 +353,6 @@ class interactor(QtWidgets.QWidget):
             return
         self.polydata = get_polydata_from_stl(filep)
         self.ui.load_label.setText(filep)
-        self.trans = np.eye(4)
-        
-        self.ui.trans_widget.trans_origin_button.setEnabled(True)
-        self.ui.rotation_widget.trans_origin_button.setEnabled(True)
-        self.ui.trans_reset_button.setEnabled(True)
-        self.ui.trans_widget.choose_vertex_button.setEnabled(True)
-        
         self.redraw_stl()
 
 
@@ -411,8 +371,9 @@ class interactor(QtWidgets.QWidget):
             self.ren.RemoveActor(self.slice_actors)
         else:
             self.ren.RemoveAllViewProps()
-            self.ui.geo_box.setEnabled(True)
             self.ui.slice_box.setEnabled(True)
+        
+            
         
         self.object_actor = actor_from_polydata(self.polydata)
         self.ren.AddActor(self.object_actor)
@@ -430,130 +391,11 @@ class interactor(QtWidgets.QWidget):
         self.origin_actor.GetZAxisCaptionActor2D().GetTextActor().SetTextScaleModeToNone()
         self.ren.AddActor(self.origin_actor)
         
-        self.change_opacity(self.ui.op_slider.value())
+        
         self.ren.ResetCamera()
         self.ui.vtkWidget.setFocus()
         self.ui.vtkWidget.update()
         
-
-    def change_opacity(self,value):
-        self.ui.op_slider_label.setText('Opacity: %d%%'%value)
-        if hasattr(self,'object_actor'):
-            self.object_actor.GetProperty().SetOpacity(value/100)
-        self.ui.vtkWidget.update()
-
-
-    def reset_trans(self):
-        '''
-        Applies the inverse of the current transformation matrix to revert all transformations, resets inputs for movement
-        '''
-
-        T = np.linalg.inv(self.trans)
-        self.apply_transformation(T)
-
-    def apply_trans(self):
-        '''
-        Applies the appropriate translation to the existing model object(s)
-        '''
-        self.ui.translate_drop_button.setChecked(False)
-        
-        T = np.eye(4)
-        T[0,-1] = self.ui.trans_widget.translate_x.value()
-        T[1,-1] = self.ui.trans_widget.translate_y.value()
-        T[2,-1] = self.ui.trans_widget.translate_z.value()
-        self.apply_transformation(T)
-        if self.picking:
-            self.actuate_vertex_select()
-
-    def apply_rotation(self):
-        '''
-        Applies a rotation matrix to the current object
-        '''
-        
-        T = get_trans_from_euler_angles( \
-        self.ui.rotation_widget.rotate_x.value(), \
-        self.ui.rotation_widget.rotate_y.value(), \
-        self.ui.rotation_widget.rotate_z.value())
-        self.apply_transformation(T)
-
-    def apply_transformation(self,T):
-        '''
-        Applies transformation matrix T to current STL entry
-        '''
-        
-        #modify relevant aspects of the instance according to the transformation matrix
-        np_pts = do_transform(v2n(self.polydata.GetPoints().GetData()),T)
-        self.trans = T @ self.trans
-        c_points = self.polydata.GetPoints()
-        for i in range(len(np_pts)):
-            c_points.SetPoint(i, np_pts[i,:])
-        self.polydata.Modified()
-        
-
-        self.redraw_stl()
-        self.ren.ResetCamera()
-        self.ui.vtkWidget.setFocus()
-
-    def actuate_vertex_select(self):
-        '''
-        Starts picking and handles ui button display
-        '''
-        
-        #selected actor is the vertex highlight
-        if hasattr(self,'selected_actor'):
-            self.ren.RemoveActor(self.selected_actor)
-        
-        if self.picking:
-            #Remove picking observer and re-initialise
-            self.iren.RemoveObservers('LeftButtonPressEvent')
-            self.iren.AddObserver('LeftButtonPressEvent',self.default_left_button)
-            QtWidgets.QApplication.processEvents()
-            self.picking = False
-            self.ui.translate_drop_button.setChecked(False)
-            self.ui.trans_widget.choose_vertex_button.setChecked(False)
-
-        else:
-            self.iren.AddObserver('LeftButtonPressEvent', self.picker_callback)
-            self.picking = True
-            #meant to keep dropdown engaged through the picking process, but ineffective. Stopping picking suspends, as does 'updating'.
-            self.ui.trans_widget.choose_vertex_button.setChecked(True)
-            self.ui.translate_drop_button.setChecked(True)
-
-    def default_left_button(self, obj, event):
-        #forward standard events according to the default style`
-        self.iren.GetInteractorStyle().OnLeftButtonDown()
-
-    def picker_callback(self, obj, event):
-        """
-        Actuates a pick of a node on current component
-        """
-        
-
-        colors = vtk.vtkNamedColors()
-        
-        picker = vtk.vtkPointPicker()
-        picker.SetTolerance(1)
-        
-        pos = self.iren.GetEventPosition()
-        
-        picker.Pick(pos[0], pos[1], 0, self.ren)
-
-        if picker.GetPointId() != -1:
-            
-            ids = vtk.vtkIdTypeArray()
-            ids.SetNumberOfComponents(1)
-            ids.InsertNextValue(picker.GetPointId())
-
-            if hasattr(self,'selected_actor'):
-                self.ren.RemoveActor(self.selected_actor)
-            centre = self.polydata.GetPoint(picker.GetPointId())
-            self.selected_actor = generate_sphere(centre,1,colors.GetColor3d("orchid"))
-            
-            self.ui.trans_widget.translate_x.setValue(-centre[0])
-            self.ui.trans_widget.translate_y.setValue(-centre[1])
-            self.ui.trans_widget.translate_z.setValue(-centre[2])
-            
-            self.ren.AddActor(self.selected_actor)
 
     def do_slice(self):
         """
@@ -604,10 +446,10 @@ class interactor(QtWidgets.QWidget):
         #check if there is itemData for the current entry if possible
         if self.slice_data[entry] is None:
             #order the points with polygon winding and add to a slice_obj
-            self.slice_data[entry] = slice_obj(sort_ccw(self.outlines[entry]))
+            self.slice_data[entry] = slice_obj(self.outlines[entry])
         
         outline = self.slice_data[entry].outline
-        
+        # save outline to csv file
         self.current_outline_actor = gen_outline_actor(outline, (1,0,0), 4)
         self.outline_caption_actor = gen_caption_actor('%s'%entry, self.current_outline_actor, (1,0,0))
         
@@ -708,6 +550,7 @@ class interactor(QtWidgets.QWidget):
         
         ax = self.ui.figure.gca()
         for path in self.slice_data[entry].paths:
+            print(path)
             ax.plot(path[:,0], path[:,1], '--', color = 'k')
     
         self.ui.canvas.draw()
