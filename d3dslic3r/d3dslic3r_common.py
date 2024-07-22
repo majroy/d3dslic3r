@@ -1,52 +1,15 @@
-import os
-import vtk
 import numpy as np
+import vtk
 from scipy.spatial.distance import cdist
 from scipy.spatial import Delaunay
 from vtk.util.numpy_support import vtk_to_numpy as v2n
 from vtk.util.numpy_support import numpy_to_vtk as n2v
-from PyQt5 import QtCore, QtGui, QtWidgets
 from sklearn.cluster import AgglomerativeClustering
 from shapely.ops import unary_union, polygonize
 import shapely.geometry as geometry
 from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper, JT_SQUARE, ET_CLOSEDPOLYGON
 from scipy.interpolate import interp1d
-from pkg_resources import Requirement, resource_filename
-import matplotlib.pyplot as plt
 from scipy.spatial import distance
-
-def make_splash():
-    '''
-    Makes and returns a Qt splash window object
-    '''
-    spl_fname=resource_filename("d3dslic3r","meta/Logo.png")
-    splash_pix = QtGui.QPixmap(spl_fname,'PNG')
-    splash = QtWidgets.QSplashScreen(splash_pix, QtCore.Qt.SplashScreen)
-    splash.setWindowFlags(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.FramelessWindowHint)
-    
-    font = splash.font()
-    font.setPixelSize(20)
-    font.setWeight(QtGui.QFont.Bold)
-    splash.setFont(font)
-    
-    # splash.showMessage('v%s'%(version('d3dslic3r')),QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom, QtCore.Qt.lightGray)
-    splash.showMessage('v%s'%("0.0.1"),QtCore.Qt.AlignRight | QtCore.Qt.AlignTop, QtCore.Qt.darkGray)
-    return splash
-
-def make_logo(ren):
-    spl_fname=resource_filename("d3dslic3r","meta/background.png")
-    img_reader = vtk.vtkPNGReader()
-    img_reader.SetFileName(spl_fname)
-    img_reader.Update()
-    logo = vtk.vtkLogoRepresentation()
-    logo.SetImage(img_reader.GetOutput())
-    logo.ProportionalResizeOn()
-    logo.SetPosition( 0.1, 0.1 ) #lower left
-    logo.SetPosition2( 0.8, 0.8 ) #upper right
-    logo.GetImageProperty().SetDisplayLocationToBackground()
-    ren.AddViewProp(logo)
-    logo.SetRenderer(ren)
-    return logo
 
 def order_points_in_loop(points):
     """
@@ -194,7 +157,7 @@ def actor_from_polydata(polydata):
     stl_actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Gray'))
 
     return stl_actor
-
+    
 def get_file(*args):
     '''
     Returns absolute path to filename and the directory it is located in from a PyQt5 filedialog. First value is file extension, second is a string which overwrites the window message.
@@ -510,26 +473,3 @@ def offset_poly(poly, offset):
     two_d = respace_equally(two_d,len(poly))[0]
     
     return np.column_stack((two_d,np.ones(len(two_d))*zval)) 
-    
-
-def xyview(ren):
-    camera = ren.GetActiveCamera()
-    camera.SetPosition(0,0,1)
-    camera.SetFocalPoint(0,0,0)
-    camera.SetViewUp(0,1,0)
-    ren.ResetCamera()
-
-def yzview(ren):
-    camera = ren.GetActiveCamera()
-    camera.SetPosition(1,0,0)
-    camera.SetFocalPoint(0,0,0)
-    camera.SetViewUp(0,0,1)
-    ren.ResetCamera()
-
-def xzview(ren):
-    vtk.vtkObject.GlobalWarningDisplayOff() #mapping from '3' triggers an underlying stereoview that most displays do not support for trackball interactors
-    camera = ren.GetActiveCamera()
-    camera.SetPosition(0,1,0)
-    camera.SetFocalPoint(0,0,0)
-    camera.SetViewUp(0,0,1)
-    ren.ResetCamera()
