@@ -5,7 +5,7 @@ D3D it with Python
 0.1 - Inital release
 '''
 __author__ = "M.J. Roy"
-__version__ = "0.2"
+__version__ = "0.1"
 __email__ = "matthew.roy@manchester.ac.uk"
 __status__ = "Experimental"
 __copyright__ = "(c) M. J. Roy, 2024-"
