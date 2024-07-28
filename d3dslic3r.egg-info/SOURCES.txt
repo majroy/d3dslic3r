@@ -4,6 +4,7 @@ README.MD
 README.md
 setup.py
 d3dslic3r/__init__.py
+d3dslic3r/cut_with_slic3r.py
 d3dslic3r/d3dslic3r_common.py
 d3dslic3r/d3dslic3r_gui_common.py
 d3dslic3r/export_widget.py
@@ -19,9 +20,11 @@ d3dslic3r/meta/Logo.png
 d3dslic3r/meta/__init__.py
 d3dslic3r/meta/background.png
 d3dslic3r/meta/clippy.png
+d3dslic3r/meta/d3dslic3r_config.yml
 d3dslic3r/meta/dippy.png
 d3dslic3r/meta/nogeometry.png
 d3dslic3r/meta/noslice.png
 d3dslic3r/meta/rotate_icon.png
+d3dslic3r/meta/scale_icon.png
 d3dslic3r/meta/sys_icon.png
 d3dslic3r/meta/translate_icon.png

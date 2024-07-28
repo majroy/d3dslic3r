@@ -5,7 +5,7 @@ D3D it with Python
 0.1 - Inital release
 '''
 __author__ = "M.J. Roy"
-__version__ = "0.1"
+__version__ = "0.2"
 __email__ = "matthew.roy@manchester.ac.uk"
 __status__ = "Experimental"
 __copyright__ = "(c) M. J. Roy, 2024-"
@@ -23,10 +23,10 @@ from matplotlib import rc
 from matplotlib.patches import Polygon
 import importlib.resources
 
-from d3dslic3r.d3dslic3r_common import *
-from d3dslic3r.d3dslic3r_gui_common import *
+from d3dslic3r_common import *
+from d3dslic3r_gui_common import *
 from d3dslic3r.export_widget import export_widget
-from d3dslic3r.transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
+from transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
 
 
 def launch(*args, **kwargs):
@@ -119,8 +119,12 @@ class main_window(QtWidgets.QWidget):
         self.op_slider.setRange(0,100)
         self.op_slider.setSliderPosition(100)
         
+        self.export_stl_button = QtWidgets.QPushButton('Export')
+        self.export_stl_button.setToolTip('Export current model geometry as new STL')
+        
         geo_button_layout.addWidget(self.op_slider_label,0,0,1,1)
         geo_button_layout.addWidget(self.op_slider,0,1,1,1)
+        geo_button_layout.addWidget(self.export_stl_button,0,2,1,1)
         geo_button_layout.addLayout(make_transformation_button_layout(self),1,0,1,2)
         geo_button_layout.setColumnStretch(0, 0)
         geo_button_layout.setColumnStretch(1, 1)
@@ -153,7 +157,7 @@ class main_window(QtWidgets.QWidget):
         self.agglom_param_sb = QtWidgets.QDoubleSpinBox()
         self.agglom_param_sb.setPrefix('Threshold = ')
         self.agglom_param_sb.setMinimum(0.001)
-        self.agglom_param_sb.setMaximum(1000)
+        self.agglom_param_sb.setMaximum(10000)
         self.agglom_param_sb.setDecimals(1)
         self.agglom_param_sb.setValue(5)
         self.agglom_param_sb.setToolTip('Threshold for sub-slicing')
@@ -221,8 +225,8 @@ class main_window(QtWidgets.QWidget):
         self.path_box.setEnabled(False)
         
         #make outline modification box
-        outline_mod_box = QtWidgets.QGroupBox('Outline modification')
         outline_mod_layout = QtWidgets.QGridLayout()
+        outline_mod_box = collapsible_box('Outline modification')
         self.alpha_pb = QtWidgets.QPushButton("Apply")
         self.alpha_pb.setToolTip('Apply alpha shape smoothing to active profile.')
         self.alpha_undo_pb = QtWidgets.QPushButton("Revert")
@@ -261,7 +265,7 @@ class main_window(QtWidgets.QWidget):
         #add layouts to boxes & main widgets to main layouts
         self.slice_box.setLayout(slice_layout)
         self.path_box.setLayout(path_layout)
-        outline_mod_box.setLayout(outline_mod_layout)
+        outline_mod_box.set_content_layout(outline_mod_layout)
         path_layout.addLayout(path_gen_layout)
         path_layout.addWidget(self.canvas)
         path_layout.addWidget(toolbar)
@@ -320,10 +324,13 @@ class interactor(QtWidgets.QWidget):
         self.ui.load_button.clicked.connect(self.load_stl)
         
         self.ui.op_slider.valueChanged[int].connect(self.change_opacity)
+        self.ui.export_stl_button.clicked.connect(self.export_stl)
         self.ui.trans_widget.trans_origin_button.clicked.connect(self.apply_trans)
         self.ui.trans_reset_button.clicked.connect(self.reset_trans)
         self.ui.trans_widget.choose_vertex_button.clicked.connect(self.actuate_vertex_select)
+        self.ui.trans_widget.first_centroid.clicked.connect(self.actuate_centroid_select)
         self.ui.rotation_widget.trans_origin_button.clicked.connect(self.apply_rotation)
+        self.ui.scale_widget.trans_origin_button.clicked.connect(self.apply_scale)
         
         self.ui.update_slice_button.clicked.connect(self.do_slice)
         self.ui.slice_num_cb.currentIndexChanged.connect(self.draw_slice)
@@ -390,11 +397,25 @@ class interactor(QtWidgets.QWidget):
         
         self.ui.trans_widget.trans_origin_button.setEnabled(True)
         self.ui.rotation_widget.trans_origin_button.setEnabled(True)
+        self.ui.scale_widget.trans_origin_button.setEnabled(True)
         self.ui.trans_reset_button.setEnabled(True)
         self.ui.trans_widget.choose_vertex_button.setEnabled(True)
         
         self.redraw_stl()
 
+
+    def export_stl(self):
+        '''
+        Writes the current model geometry to a new STL file
+        '''
+        
+        fileo = get_save_file('*.stl')
+        if fileo is None:
+            return
+        writer = vtk.vtkSTLWriter()
+        writer.SetFileName(fileo)
+        writer.SetInputData(self.polydata)
+        writer.Write()
 
     def redraw_stl(self):
         """
@@ -476,6 +497,27 @@ class interactor(QtWidgets.QWidget):
         self.ui.rotation_widget.rotate_z.value())
         self.apply_transformation(T)
 
+    def apply_scale(self):
+        
+        T = np.eye(4)
+        
+        if self.ui.scale_widget.scale_uniform_cb.isChecked():
+            #Get maximum of entries
+            sfactor = np.max([
+            self.ui.scale_widget.scale_x.value(),
+            self.ui.scale_widget.scale_y.value(),
+            self.ui.scale_widget.scale_z.value()
+            ])
+            self.ui.scale_widget.scale_x.setValue(sfactor)
+            self.ui.scale_widget.scale_y.setValue(sfactor)
+            self.ui.scale_widget.scale_z.setValue(sfactor)
+        
+        T[0,0] = self.ui.scale_widget.scale_x.value()
+        T[1,1] = self.ui.scale_widget.scale_y.value()
+        T[2,2] = self.ui.scale_widget.scale_z.value()
+        self.apply_transformation(T)
+
+
     def apply_transformation(self,T):
         '''
         Applies transformation matrix T to current STL entry
@@ -492,8 +534,24 @@ class interactor(QtWidgets.QWidget):
 
         self.redraw_stl()
         self.ren.ResetCamera()
-        self.ui.vtkWidget.setFocus()
-
+        self.ui.vtkWidget.update()
+        # self.ui.vtkWidget.setFocus()
+    
+    def actuate_centroid_select(self):
+        '''
+        Populates translate widget with centroid coordinates of the first slice
+        '''
+        try:
+            cent = - np.mean(self.slice_data[0].outline, axis=0)
+            self.ui.trans_widget.translate_x.setValue(cent[0])
+            self.ui.trans_widget.translate_y.setValue(cent[1])
+            self.ui.trans_widget.translate_z.setValue(cent[2])
+        except:
+            print('Finding the centroid of the first slice did not happen.')
+            return
+        
+        
+    
     def actuate_vertex_select(self):
         '''
         Starts picking and handles ui button display
@@ -573,6 +631,10 @@ class interactor(QtWidgets.QWidget):
         
         self.outlines = get_sub_slice_data(self.outlines,self.ui.agglom_param_sb.value())
         
+        #order points
+        for i in range(len(self.outlines)):
+            self.outlines[i] = order_points_in_loop(self.outlines[i])
+            
         self.slice_data = [None] * len(self.outlines)
         
         for i in range(len(self.outlines)):
@@ -580,6 +642,7 @@ class interactor(QtWidgets.QWidget):
         self.ui.slice_num_cb.setEnabled(True)
         
         self.ui.path_box.setEnabled(True)
+        self.ui.trans_widget.first_centroid.setEnabled(True)
         
         self.ren.AddActor(self.slice_actors)
         self.ui.vtkWidget.update()
@@ -601,10 +664,9 @@ class interactor(QtWidgets.QWidget):
         #get active outline
         entry = self.ui.slice_num_cb.currentIndex()
         
-        #check if there is itemData for the current entry if possible
+        #check if there is itemData for the current entry, initialize a slice_obj otherwise
         if self.slice_data[entry] is None:
-            #order the points with polygon winding and add to a slice_obj
-            self.slice_data[entry] = slice_obj(sort_ccw(self.outlines[entry]))
+            self.slice_data[entry] = slice_obj(self.outlines[entry])
         
         outline = self.slice_data[entry].outline
         
@@ -660,7 +722,7 @@ class interactor(QtWidgets.QWidget):
         """
         
         entry = self.ui.slice_num_cb.currentIndex()
-        self.slice_data[entry] = slice_obj(sort_ccw(self.outlines[entry]))
+        self.slice_data[entry] = slice_obj(self.outlines[entry])
         
         self.draw_slice()
         

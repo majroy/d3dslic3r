@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 '''
-Constructor functions/methods for transformation widgets for OpenRS.
+Constructor functions/methods for transformation widgets. make_x_button could be abstracted.
 '''
 
 import sys
@@ -8,19 +8,6 @@ import numpy as np
 from PyQt5 import QtCore, QtGui, QtWidgets
 import importlib.resources
 
-def make_translate_button_layout(parent_window):
-    '''
-    Makes a button group containing a translation, rotation and reset button
-    '''
-    button_layout = QtWidgets.QHBoxLayout()
-    parent_window.trans_reset_button = QtWidgets.QPushButton('Reset')
-    parent_window.trans_reset_button.setToolTip('Reset all current transformations')
-    parent_window.trans_reset_button.setEnabled(False)
-    parent_window.translate_drop_button = make_translate_button(parent_window)
-    button_layout.addWidget(parent_window.translate_drop_button)
-    button_layout.addWidget(parent_window.trans_reset_button)
-    button_layout.addStretch(1)
-    return button_layout
 
 def make_transformation_button_layout(parent_window):
     '''
@@ -34,6 +21,8 @@ def make_transformation_button_layout(parent_window):
     button_layout.addWidget(parent_window.translate_drop_button)
     parent_window.rotate_drop_button = make_rotate_button(parent_window)
     button_layout.addWidget(parent_window.rotate_drop_button)
+    parent_window.scale_drop_button = make_scale_button(parent_window)
+    button_layout.addWidget(parent_window.scale_drop_button)
     button_layout.addWidget(parent_window.trans_reset_button)
     button_layout.addStretch(1)
     return button_layout
@@ -64,12 +53,28 @@ def make_rotate_button(parent_window):
     rotate_drop_button.setCheckable(True)
     rotate_drop_button.setMenu(QtWidgets.QMenu(rotate_drop_button))
     trans_action = QtWidgets.QWidgetAction(rotate_drop_button)
-    parent_window.rotation_widget = transform_box(parent_window,'transform')
+    parent_window.rotation_widget = transform_box(parent_window, 'rotate')
     trans_action.setDefaultWidget(parent_window.rotation_widget)
     rotate_drop_button.menu().addAction(trans_action)
     rotate_drop_button.setIcon(rotate_icon)
     rotate_drop_button.setToolTip('Rotate about origin')
     return rotate_drop_button
+    
+def make_scale_button(parent_window):
+    ico = importlib.resources.files('d3dslic3r') / 'meta/scale_icon.png'
+    with importlib.resources.as_file(ico) as path:
+        scale_icon = QtGui.QIcon(QtGui.QIcon(path.__str__()))
+    scale_drop_button = QtWidgets.QToolButton()
+    scale_drop_button.setPopupMode(QtWidgets.QToolButton.MenuButtonPopup)
+    scale_drop_button.setCheckable(True)
+    scale_drop_button.setMenu(QtWidgets.QMenu(scale_drop_button))
+    trans_action = QtWidgets.QWidgetAction(scale_drop_button)
+    parent_window.scale_widget = transform_box(parent_window, 'scale')
+    trans_action.setDefaultWidget(parent_window.scale_widget)
+    scale_drop_button.menu().addAction(trans_action)
+    scale_drop_button.setIcon(scale_icon)
+    scale_drop_button.setToolTip('Scale over main axes')
+    return scale_drop_button
 
 def get_trans_from_euler_angles(ax,ay,az):
     '''
@@ -90,9 +95,7 @@ def get_trans_from_euler_angles(ax,ay,az):
 class transform_box(QtWidgets.QWidget):
     def __init__(self, parent_window, cond, *args, **kwargs):
         '''
-        Depending on 'cond', either just translate or both translate and rotate options provided.
-        cond = 'translate': translate only
-             = 'transform': translate and rotate
+        Makes a complete reorientation widget
         '''
         
         super().__init__(*args, **kwargs)
@@ -109,6 +112,9 @@ class transform_box(QtWidgets.QWidget):
         translate_layout = QtWidgets.QVBoxLayout()
         rotate_box = QtWidgets.QGroupBox('Rotate about:')
         rotate_layout = QtWidgets.QVBoxLayout()
+        scale_box = QtWidgets.QGroupBox('Scale over:')
+        scale_layout = QtWidgets.QVBoxLayout()
+        
         
         self.setLayout(button_layout)
         
@@ -117,7 +123,10 @@ class transform_box(QtWidgets.QWidget):
         self.choose_vertex_button.setEnabled(False)
         self.choose_vertex_button.setCheckable(True)
         self.choose_vertex_button.setToolTip("Select vertex from viewport")
-
+        self.first_centroid = QtWidgets.QPushButton('Centroid')
+        self.first_centroid.setToolTip("Select centroid of first slice")
+        self.first_centroid.setEnabled(False)
+        
         self.trans_origin_button = QtWidgets.QPushButton('Update')
         self.trans_origin_button.setToolTip('Apply transformation')
         self.trans_origin_button.setEnabled(False)
@@ -162,7 +171,6 @@ class transform_box(QtWidgets.QWidget):
         self.rotate_y.setPrefix('Y ')
         self.rotate_y.setSuffix(' °')
         
-        zlabel = QtWidgets.QLabel("Z (deg)")
         self.rotate_z = QtWidgets.QDoubleSpinBox()
         self.rotate_z.setSingleStep(15)
         self.rotate_z.setMinimum(-345)
@@ -170,6 +178,34 @@ class transform_box(QtWidgets.QWidget):
         self.rotate_z.setMaximum(345)
         self.rotate_z.setPrefix('Z ')
         self.rotate_z.setSuffix(' °')
+
+        #scaling
+        self.scale_x = QtWidgets.QDoubleSpinBox()
+        self.scale_x.setSingleStep(1)
+        self.scale_x.setMinimum(0.0001)
+        self.scale_x.setValue(1)
+        self.scale_x.setMaximum(10000)
+        self.scale_x.setPrefix('X ')
+        self.scale_x.setSuffix(' ×')
+        
+        self.scale_y = QtWidgets.QDoubleSpinBox()
+        self.scale_y.setSingleStep(1)
+        self.scale_y.setMinimum(0.0001)
+        self.scale_y.setValue(1)
+        self.scale_y.setMaximum(10000)
+        self.scale_y.setPrefix('Y ')
+        self.scale_y.setSuffix(' ×')
+        
+        self.scale_z = QtWidgets.QDoubleSpinBox()
+        self.scale_z.setSingleStep(1)
+        self.scale_z.setMinimum(0.0001)
+        self.scale_z.setValue(1)
+        self.scale_z.setMaximum(10000)
+        self.scale_z.setPrefix('Z ')
+        self.scale_z.setSuffix(' ×')
+        
+        
+        self.scale_uniform_cb = QtWidgets.QCheckBox('Uniform scaling')
 
         #transform origin button layout
         translate_layout.addWidget(self.translate_x)
@@ -180,14 +216,23 @@ class transform_box(QtWidgets.QWidget):
         rotate_layout.addWidget(self.rotate_y)
         rotate_layout.addWidget(self.rotate_z)
         
+        scale_layout.addWidget(self.scale_x)
+        scale_layout.addWidget(self.scale_y)
+        scale_layout.addWidget(self.scale_z)
+        
         translate_box.setLayout(translate_layout)
         rotate_box.setLayout(rotate_layout)
+        scale_box.setLayout(scale_layout)
         if cond == 'translate':
             vl.addWidget(self.choose_vertex_button)
+            vl.addWidget(self.first_centroid)
             hl.addWidget(translate_box)
         vl.addWidget(self.trans_origin_button)
-        if cond == 'transform':
+        if cond == 'rotate':
             hl.addWidget(rotate_box)
+        if cond == 'scale':
+            vl.addWidget(self.scale_uniform_cb)
+            hl.addWidget(scale_box)
         
         button_layout.addLayout(vl)
         button_layout.addLayout(hl)
@@ -196,11 +241,7 @@ class transform_box(QtWidgets.QWidget):
 if __name__ == '__main__':
     app = QtWidgets.QApplication(sys.argv)
     window = QtWidgets.QWidget()
-    layout1 = make_translate_button_layout(window)
-    layout2 = make_transformation_button_layout(window)
-    main_layout = QtWidgets.QVBoxLayout()
-    main_layout.addLayout(layout1)
-    main_layout.addLayout(layout2)
-    window.setLayout(main_layout)
+    layout = make_transformation_button_layout(window)
+    window.setLayout(layout)
     window.show()
     sys.exit(app.exec_())

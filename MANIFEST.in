@@ -6,4 +6,6 @@ include d3dslic3r/meta/noslice.png
 include d3dslic3r/meta/sys_icon.png
 include d3dslic3r/meta/translate_icon.png
 include d3dslic3r/meta/rotate_icon.png
+include d3dslic3r/meta/scale_icon.png
+include d3dslic3r/meta/d3dslic3r_config.yml
 include README.MD

@@ -9,7 +9,30 @@ from shapely.ops import unary_union, polygonize
 import shapely.geometry as geometry
 from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper, JT_SQUARE, ET_CLOSEDPOLYGON
 from scipy.interpolate import interp1d
+from scipy.spatial import distance
 
+def order_points_in_loop(points):
+    """
+    Ensures points are ordered to form a continuous loop.
+    """
+    if len(points) < 2:
+        return points
+
+    ordered_points = [points[0]]
+    points = np.delete(points, 0, axis=0)
+
+    while len(points) > 0:
+        last_point = ordered_points[-1]
+        distances = distance.cdist([last_point], points)
+        nearest_index = np.argmin(distances)
+        ordered_points.append(points[nearest_index])
+        points = np.delete(points, nearest_index, axis=0)
+
+    # Check if the loop is closed and connect the last to the first point if necessary
+    if not np.array_equal(ordered_points[0], ordered_points[-1]):
+        ordered_points.append(ordered_points[0])
+
+    return np.array(ordered_points)
 
 def get_slice_data(polydata,param,num_slices = True):
     """
@@ -30,7 +53,7 @@ def get_slice_data(polydata,param,num_slices = True):
                     (bbox[3] + bbox[2]) / 2.0]
     #Assumes polydata starts at 0.001 above minimum z value of the bounding box, and the first slice is the 'footprint' of the polydata. Additional value is to avoid the last 'slice' consistent with the upper boundary.
     if num_slices:
-        z_vals = np.linspace(bbox[4]+0.001,bbox[5],param+1)[0:-1]
+        z_vals = np.linspace(bbox[4]+0.01,bbox[5],param+1)[0:-1]
     else:
         # z_vals based on fixed height of each layer
         num_z_vals = int(np.floor((bbox[5] - bbox[4]+0.001)/param))
@@ -38,21 +61,43 @@ def get_slice_data(polydata,param,num_slices = True):
 
     plane_collection = vtk.vtkAssembly()
     slices = []
-    for i in range(len(z_vals)):
+    for z in z_vals:
         plane = vtk.vtkPlane()
-        plane.SetNormal(0,0,1) 
-        plane.SetOrigin(tuple([xy_origin[0],xy_origin[1],z_vals[i]]))
+        plane.SetNormal(0, 0, 1)
+        plane.SetOrigin(xy_origin[0], xy_origin[1], z)
         
         cutter = vtk.vtkCutter()
         cutter.SetCutFunction(plane)
         cutter.SetInputData(polydata)
         cutter.Update()
-        slices.append(v2n(cutter.GetOutput().GetPoints().GetData()))
         
+        
+        # Use vtkPolyDataConnectivityFilter to separate components
+        connectivity_filter = vtk.vtkPolyDataConnectivityFilter()
+        connectivity_filter.SetInputConnection(cutter.GetOutputPort())
+        connectivity_filter.SetExtractionModeToAllRegions()
+        # connectivity_filter.ColorRegionsOn() #Changes result from mapper
+        connectivity_filter.Update()
+
+        # Use vtkStripper to order the points in each region
+        stripper = vtk.vtkStripper()
+        stripper.SetInputConnection(connectivity_filter.GetOutputPort())
+        # stripper.JoinContiguousSegmentsOn() # Doesn't matter if on or off
+        stripper.Update()
+
+        # Get the ordered points
+        ordered_polyline = stripper.GetOutput()
+        points = ordered_polyline.GetPoints()
+        
+        # Convert VTK points to numpy array
+        if points:
+            slice_points = v2n(points.GetData())
+            slices.append(slice_points)
+        
+        # Create a mapper and actor for visualization
         cutter_mapper = vtk.vtkPolyDataMapper()
-        cutter_mapper.SetInputConnection(cutter.GetOutputPort())
-    
-        # Create the cut actor.
+        cutter_mapper.SetInputConnection(stripper.GetOutputPort())
+
         actor = vtk.vtkActor()
         actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Tomato'))
         actor.GetProperty().SetLineWidth(2)
@@ -71,8 +116,14 @@ def get_sub_slice_data(outlines, threshold):
         clustering = agg_cluster.fit(outline[:,0:2])
         #make list of truth arrays for each cluster
         for i in range(clustering.n_clusters_):
-            new_outlines.append(outline[(clustering.labels_ == i),:])
-            
+            # check if the cluster is a closed loop
+            if np.array_equal(clustering.labels_,clustering.labels_[::-1]):
+                new_outlines.append(outline[(clustering.labels_ == i),:]) 
+            else:
+                #if the cluster is not a closed loop, close it
+                closed_loop = np.vstack((outline[(clustering.labels_ == i)],outline[(clustering.labels_ == i)][0]))
+                new_outlines.append(closed_loop)
+    # np.savetxt('new_outlines.csv', new_outlines[-3], delimiter=',')
     return new_outlines
 
 def get_polydata_from_stl(fname):
@@ -107,58 +158,6 @@ def actor_from_polydata(polydata):
     stl_actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Gray'))
 
     return stl_actor
-
-def gen_outline_actor(pts, color = (1,1,1), size = 2):
-    '''
-    Returns an outline actor with specified numpy array of points, color and size. pts should be ordered
-    '''
-    if color[0]<=1 and color != None:
-        color=(int(color[0]*255),int(color[1]*255),int(color[2]*255))
-    if color[0]>=1 and color != None:
-        color=(color[0]/float(255),color[1]/float(255),color[2]/float(255))
-    points=vtk.vtkPoints()
-
-    points.SetData(n2v(pts))
-
-    lineseg=vtk.vtkPolygon()
-    lineseg.GetPointIds().SetNumberOfIds(len(pts))
-    for i in range(len(pts)):
-        lineseg.GetPointIds().SetId(i,i)
-    linesegcells=vtk.vtkCellArray()
-    linesegcells.InsertNextCell(lineseg)
-    outline=vtk.vtkPolyData()
-    outline.SetPoints(points)
-    outline.SetVerts(linesegcells)
-    outline.SetLines(linesegcells)
-    mapper=vtk.vtkPolyDataMapper()
-    mapper.SetInputData(outline)
-    outline_actor=vtk.vtkActor()
-    outline_actor.SetMapper(mapper)
-    outline_actor.GetProperty().SetColor(color)
-    outline_actor.GetProperty().SetPointSize(size)
-    return outline_actor
-
-def gen_caption_actor(message, actor = None, color = (0,0,0)):
-    '''
-    Captions an actor
-    '''
-    caption_actor = vtk.vtkCaptionActor2D()
-    b = actor.GetBounds()
-    caption_actor.SetAttachmentPoint((b[0],b[2],b[4]))
-    caption_actor.SetCaption(message)
-    caption_actor.SetThreeDimensionalLeader(False)
-    caption_actor.BorderOff()
-    caption_actor.LeaderOff()
-    caption_actor.SetWidth(0.25 / 3.0)
-    caption_actor.SetHeight(0.10 / 3.0)
-    
-    p = caption_actor.GetCaptionTextProperty()
-    p.SetColor(color)
-    p.BoldOn()
-    p.ItalicOff()
-    p.SetFontSize(36)
-    p.ShadowOn()
-    return caption_actor
 
 def sort_ccw(inp):
     """

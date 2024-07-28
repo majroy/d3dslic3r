@@ -2,6 +2,7 @@ import os
 import vtk
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from vtk.util.numpy_support import numpy_to_vtk as n2v
 import importlib.resources
 
 class collapsible_box(QtWidgets.QWidget):
@@ -115,24 +116,95 @@ def get_file(*args):
     '''
     Returns absolute path to filename and the directory it is located in from a PyQt5 filedialog. First value is file extension, second is a string which overwrites the window message.
     '''
-    ext = args
-    launchdir = os.getcwd()
+    ext = args[0]
+    if len(args)>1:
+        id = args[1]
+    else: id = os.getcwd()
     ftypeName={}
     ftypeName['*.stl']=["STereoLithography file", "*.stl","STL file"]
+    ftypeName['*.*'] = ["d3dslic3r external executable", "*.*", "..."]
     
-    filter_str = ""
-    for entry in args:
-        filter_str += ftypeName[entry][2] + ' ('+ftypeName[entry][1]+');;'
-    filter_str += ('All Files (*.*)')
     
-    filer = QtWidgets.QFileDialog.getOpenFileName(None, ftypeName[ext[0]][0], 
-         os.getcwd(),(filter_str))
+    filer = QtWidgets.QFileDialog.getOpenFileName(None, str(ftypeName[ext][0]), 
+         id,(ext))
 
     if filer[0] == '':
         return None
         
     else: #return the filename/path
         return filer[0]
+
+def get_save_file(*args):
+    '''
+    Gets a file path for saving
+    '''
+
+    ftypeName={}
+    ftypeName['*.stl']='STereoLithography file'
+    
+    ext = args[0]
+    if len(args)>1:
+        id = args[1]
+    else: id = os.getcwd()
+    
+    filer, _ = QtWidgets.QFileDialog.getSaveFileName(None, "Save as:", id,str(ftypeName[ext]+' ('+ext+')'))
+    
+    if filer == '':
+        return None
+    else:
+        return filer
+
+def gen_outline_actor(pts, color = (1,1,1), size = 2):
+    '''
+    Returns an outline actor with specified numpy array of points, color and size. pts should be ordered
+    '''
+    if color[0]<=1 and color != None:
+        color=(int(color[0]*255),int(color[1]*255),int(color[2]*255))
+    if color[0]>=1 and color != None:
+        color=(color[0]/float(255),color[1]/float(255),color[2]/float(255))
+    points=vtk.vtkPoints()
+
+    points.SetData(n2v(pts))
+
+    lineseg=vtk.vtkPolygon()
+    lineseg.GetPointIds().SetNumberOfIds(len(pts))
+    for i in range(len(pts)):
+        lineseg.GetPointIds().SetId(i,i)
+    linesegcells=vtk.vtkCellArray()
+    linesegcells.InsertNextCell(lineseg)
+    outline=vtk.vtkPolyData()
+    outline.SetPoints(points)
+    outline.SetVerts(linesegcells)
+    outline.SetLines(linesegcells)
+    mapper=vtk.vtkPolyDataMapper()
+    mapper.SetInputData(outline)
+    outline_actor=vtk.vtkActor()
+    outline_actor.SetMapper(mapper)
+    outline_actor.GetProperty().SetColor(color)
+    outline_actor.GetProperty().SetPointSize(size)
+    return outline_actor
+
+def gen_caption_actor(message, actor = None, color = (0,0,0)):
+    '''
+    Captions an actor
+    '''
+    caption_actor = vtk.vtkCaptionActor2D()
+    b = actor.GetBounds()
+    caption_actor.SetAttachmentPoint((b[0],b[2],b[4]))
+    caption_actor.SetCaption(message)
+    caption_actor.SetThreeDimensionalLeader(False)
+    caption_actor.BorderOff()
+    caption_actor.LeaderOff()
+    caption_actor.SetWidth(0.25 / 3.0)
+    caption_actor.SetHeight(0.10 / 3.0)
+    
+    p = caption_actor.GetCaptionTextProperty()
+    p.SetColor(color)
+    p.BoldOn()
+    p.ItalicOff()
+    p.SetFontSize(36)
+    p.ShadowOn()
+    return caption_actor
 
 def generate_sphere(center, radius, color):
     source = vtk.vtkSphereSource()
