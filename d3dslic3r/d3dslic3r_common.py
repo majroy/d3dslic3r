@@ -10,6 +10,7 @@ import shapely.geometry as geometry
 from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper, JT_SQUARE, ET_CLOSEDPOLYGON
 from scipy.interpolate import interp1d
 from scipy.spatial import distance
+from shapely.geometry import LineString
 
 def order_points_in_loop(points):
     """
@@ -34,7 +35,7 @@ def order_points_in_loop(points):
 
     return np.array(ordered_points)
 
-def get_slice_data(polydata,param,num_slices = True):
+def get_slice_data(polydata,param,num_slices = True, num_of_sub_div=0):
     """
     Obtains x,y pairs corresponding to a vtkCutter operation on input polydata 
     Params:
@@ -62,49 +63,74 @@ def get_slice_data(polydata,param,num_slices = True):
     plane_collection = vtk.vtkAssembly()
     slices = []
     for z in z_vals:
-        plane = vtk.vtkPlane()
-        plane.SetNormal(0, 0, 1)
-        plane.SetOrigin(xy_origin[0], xy_origin[1], z)
-        
-        cutter = vtk.vtkCutter()
-        cutter.SetCutFunction(plane)
-        cutter.SetInputData(polydata)
-        cutter.Update()
-        
-        
-        # Use vtkPolyDataConnectivityFilter to separate components
-        connectivity_filter = vtk.vtkPolyDataConnectivityFilter()
-        connectivity_filter.SetInputConnection(cutter.GetOutputPort())
-        connectivity_filter.SetExtractionModeToAllRegions()
-        # connectivity_filter.ColorRegionsOn() #Changes result from mapper
-        connectivity_filter.Update()
-
-        # Use vtkStripper to order the points in each region
-        stripper = vtk.vtkStripper()
-        stripper.SetInputConnection(connectivity_filter.GetOutputPort())
-        # stripper.JoinContiguousSegmentsOn() # Doesn't matter if on or off
-        stripper.Update()
-
-        # Get the ordered points
-        ordered_polyline = stripper.GetOutput()
-        points = ordered_polyline.GetPoints()
-        
-        # Convert VTK points to numpy array
-        if points:
-            slice_points = v2n(points.GetData())
-            slices.append(slice_points)
-        
-        # Create a mapper and actor for visualization
-        cutter_mapper = vtk.vtkPolyDataMapper()
-        cutter_mapper.SetInputConnection(stripper.GetOutputPort())
-
-        actor = vtk.vtkActor()
-        actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Tomato'))
-        actor.GetProperty().SetLineWidth(2)
-        actor.SetMapper(cutter_mapper)
+        ordered_slice_points, actor = get_slice_data_based_on_z(polydata, z, xy_origin, num_of_sub_div=num_of_sub_div)
+        slices.append(ordered_slice_points)
         plane_collection.AddPart(actor)
-        
     return slices, plane_collection
+
+def get_slice_data_based_on_z(polydata, z, xy_origin, num_of_sub_div):
+    plane = vtk.vtkPlane()
+    plane.SetNormal(0, 0, 1)
+    plane.SetOrigin(xy_origin[0], xy_origin[1], z)
+    
+    cutter = vtk.vtkCutter()
+    cutter.SetCutFunction(plane)
+    cutter.SetInputData(polydata)
+    cutter.Update()
+    
+    # Use vtkPolyDataConnectivityFilter to separate components
+    connectivity_filter = vtk.vtkPolyDataConnectivityFilter()
+    connectivity_filter.SetInputConnection(cutter.GetOutputPort())
+    connectivity_filter.SetExtractionModeToAllRegions()
+    connectivity_filter.ColorRegionsOn()
+    connectivity_filter.Update()
+
+    # Apply vtkSplineFilter to add more points
+    spline_filter = vtk.vtkSplineFilter()
+    spline_filter.SetInputConnection(connectivity_filter.GetOutputPort())
+    spline_filter.SetSubdivideToSpecified()
+    spline_filter.SetNumberOfSubdivisions(num_of_sub_div)
+    spline_filter.Update()
+
+    # Use vtkStripper to order the points in each region
+    stripper = vtk.vtkStripper()
+    stripper.SetInputConnection(spline_filter.GetOutputPort())
+    stripper.JoinContiguousSegmentsOn()  # Ensure loops are closed
+    stripper.Update()
+    
+    # Get the ordered points
+    ordered_polyline = stripper.GetOutput()
+    points = ordered_polyline.GetPoints()
+    
+    # Convert VTK points to numpy array
+    if points:
+        slice_points = v2n(points.GetData())
+        orfered_slice_points = order_points_in_loop(slice_points)
+
+    # Create a mapper and actor for visualization
+    cutter_mapper = vtk.vtkPolyDataMapper()
+    cutter_mapper.SetInputConnection(stripper.GetOutputPort())
+
+    actor = vtk.vtkActor()
+    actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Tomato'))
+    actor.GetProperty().SetLineWidth(2)
+    actor.SetMapper(cutter_mapper)
+
+    return orfered_slice_points, actor
+
+
+def is_self_intersecting(contour_points):
+    """
+    Check if a given contour is self-intersecting.
+    
+    Params:
+    contour_points: list of tuples representing (x, y) points.
+
+    Returns:
+    bool: True if the contour is self-intersecting, False otherwise.
+    """
+    line = LineString(contour_points[:-1])
+    return not line.is_simple
 
 def get_sub_slice_data(outlines, threshold):
     
