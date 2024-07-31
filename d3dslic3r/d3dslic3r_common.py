@@ -35,7 +35,7 @@ def order_points_in_loop(points):
 
     return np.array(ordered_points)
 
-def get_slice_data(polydata,param,num_slices = True, num_of_sub_div=0):
+def get_slice_data(polydata,param,num_slices = True):
     """
     Obtains x,y pairs corresponding to a vtkCutter operation on input polydata 
     Params:
@@ -44,7 +44,7 @@ def get_slice_data(polydata,param,num_slices = True, num_of_sub_div=0):
     num_slices sets slicing on number of total slices (True, default)
     Returns:
     slices: list of numpy arrays corresponding to each polydata intersection
-    plane_collection: vtkAssembly of slices for display
+    slice_actor_collection: vtkAssembly of slices for display
     """
     #suppress output from the vtk logger
     vtk.vtkLogger.SetStderrVerbosity(vtk.vtkLogger.VERBOSITY_OFF)
@@ -60,77 +60,36 @@ def get_slice_data(polydata,param,num_slices = True, num_of_sub_div=0):
         num_z_vals = int(np.floor((bbox[5] - bbox[4]+0.001)/param))
         z_vals = np.linspace(bbox[4]+0.001,bbox[5],num_z_vals+1)[0:-1]
 
-    plane_collection = vtk.vtkAssembly()
+    slice_actor_collection = vtk.vtkAssembly()
     slices = []
     for z in z_vals:
-        ordered_slice_points, actor = get_slice_data_based_on_z(polydata, z, xy_origin, num_of_sub_div=num_of_sub_div)
-        slices.append(ordered_slice_points)
-        plane_collection.AddPart(actor)
-    return slices, plane_collection
+        plane = vtk.vtkPlane()
+        plane.SetNormal(0, 0, 1)
+        plane.SetOrigin(xy_origin[0], xy_origin[1], z)
+        
+        cutter = vtk.vtkCutter()
+        cutter.SetCutFunction(plane)
+        cutter.SetInputData(polydata)
+        cutter.Update()
+        
+        points = cutter.GetOutput().GetPoints()
+        
+        # Convert VTK points to numpy array
+        if points:
+            slice_points = v2n(points.GetData())
+            slices.append(slice_points)
+        
+        # Create a mapper and actor for visualization
+        cutter_mapper = vtk.vtkPolyDataMapper()
+        cutter_mapper.SetInputConnection(cutter.GetOutputPort())
 
-def get_slice_data_based_on_z(polydata, z, xy_origin, num_of_sub_div):
-    plane = vtk.vtkPlane()
-    plane.SetNormal(0, 0, 1)
-    plane.SetOrigin(xy_origin[0], xy_origin[1], z)
-    
-    cutter = vtk.vtkCutter()
-    cutter.SetCutFunction(plane)
-    cutter.SetInputData(polydata)
-    cutter.Update()
-    
-    # Use vtkPolyDataConnectivityFilter to separate components
-    connectivity_filter = vtk.vtkPolyDataConnectivityFilter()
-    connectivity_filter.SetInputConnection(cutter.GetOutputPort())
-    connectivity_filter.SetExtractionModeToAllRegions()
-    connectivity_filter.ColorRegionsOn()
-    connectivity_filter.Update()
-
-    # Apply vtkSplineFilter to add more points
-    spline_filter = vtk.vtkSplineFilter()
-    spline_filter.SetInputConnection(connectivity_filter.GetOutputPort())
-    spline_filter.SetSubdivideToSpecified()
-    spline_filter.SetNumberOfSubdivisions(num_of_sub_div)
-    spline_filter.Update()
-
-    # Use vtkStripper to order the points in each region
-    stripper = vtk.vtkStripper()
-    stripper.SetInputConnection(spline_filter.GetOutputPort())
-    stripper.JoinContiguousSegmentsOn()  # Ensure loops are closed
-    stripper.Update()
-    
-    # Get the ordered points
-    ordered_polyline = stripper.GetOutput()
-    points = ordered_polyline.GetPoints()
-    
-    # Convert VTK points to numpy array
-    if points:
-        slice_points = v2n(points.GetData())
-        orfered_slice_points = order_points_in_loop(slice_points)
-
-    # Create a mapper and actor for visualization
-    cutter_mapper = vtk.vtkPolyDataMapper()
-    cutter_mapper.SetInputConnection(stripper.GetOutputPort())
-
-    actor = vtk.vtkActor()
-    actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Tomato'))
-    actor.GetProperty().SetLineWidth(2)
-    actor.SetMapper(cutter_mapper)
-
-    return orfered_slice_points, actor
-
-
-def is_self_intersecting(contour_points):
-    """
-    Check if a given contour is self-intersecting.
-    
-    Params:
-    contour_points: list of tuples representing (x, y) points.
-
-    Returns:
-    bool: True if the contour is self-intersecting, False otherwise.
-    """
-    line = LineString(contour_points[:-1])
-    return not line.is_simple
+        actor = vtk.vtkActor()
+        actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Tomato'))
+        actor.GetProperty().SetLineWidth(2)
+        actor.SetMapper(cutter_mapper)
+        slice_actor_collection.AddPart(actor)
+        
+    return slices, slice_actor_collection
 
 def get_sub_slice_data(outlines, threshold):
     
@@ -216,6 +175,19 @@ def sort_ccw(inp):
     ind = np.lexsort((c[:,1],c[:,0]))
     B = inp[ind]
     return np.vstack((B, B[0,:]))
+
+def check_self_intersecting(contour_points):
+    """
+    Check if a given contour is self-intersecting.
+    
+    Params:
+    contour_points: A sequence of (x, y, [,z]) numeric coordinate pairs or triples, or an array-like with shape (N, 2) or (N, 3). Also can be a sequence of Point objects.
+
+    Returns:
+    bool: True if the contour is self-intersecting
+    """
+    line = LineString(contour_points)
+    return not line.is_simple
 
 def sort_alpha(inp, alpha = 1):
     """
@@ -303,6 +275,7 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     """
     
     zval = np.mean(outline[:,-1])
+    print('get intersections',zval)
     # outline = outline[:,0:2]
     trans = np.eye(4)
     #move outline to centroid and rotate by angular_offset
@@ -328,11 +301,12 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
             line2 = tuple([tuple(x) for x in X[i:i+2,:]])
             local_intersection = line_intersection(line1, line2)
             if local_intersection is not None:
-                intersections.append(np.array(local_intersection,zval))
-    intersections = np.column_stack((np.asarray(intersections),np.ones(len(intersections))*zval)) 
-    
-    #return intersections in original coordinate system, actual bead offset
-    return do_transform(intersections,np.linalg.inv(trans)), (xrange[1]-xrange[0])/width
+                intersections.append(np.array([local_intersection[0],local_intersection[1],zval]))
+    #Needs to be 3D for transformation
+    intersections = np.asarray(intersections)
+    trans_intersections = do_transform(intersections,np.linalg.inv(trans))
+    #return intersections , actual bead offset
+    return np.column_stack((trans_intersections[:,0:2],np.ones(len(intersections))*zval)) , (xrange[1]-xrange[0])/width
 
 def line_intersection(line1, line2):
     '''
@@ -383,18 +357,21 @@ def line_intersection(line1, line2):
     if 0.0 < s < 1.0 and 0.0 < t < 1.0:
         return x1 + t * dx1, y1 + t * dy1
 
-def respace_equally(X,input):
+def respace_equally(X,val):
     '''
-    Takes X, a 2D array of points, respaces them on the basis of input, either a floating point value of what the target interval between points is, or an integer which is the total number of points. Returns the new array of points, the perimeter and the number of points.
+    Takes X, a 2D array of points, respaces them on the basis of 'val', either a floating point value of what the target interval between points is, or an integer which is the total number of points. Returns the new array of points, the perimeter and the number of points.
     '''
+    closed = False
+    if (X[0,:] == X[-1,:]).all():
+        closed = True
     distance=np.sqrt(np.sum(np.diff(X,axis=0)**2,axis=1))
     s=np.insert(np.cumsum(distance),0,0)
     Perimeter=np.sum(distance)
 
-    if not isinstance(input,(int)):
-        nPts=round(Perimeter/input)
+    if not isinstance(val,(int)):
+        nPts=round(Perimeter/val)
     else:
-        nPts=input
+        nPts = val
     
     sNew=np.linspace(0,s[-1],nPts)
     fx = interp1d(s,X[:,0])

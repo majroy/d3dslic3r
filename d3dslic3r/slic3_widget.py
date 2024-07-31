@@ -23,7 +23,7 @@ from matplotlib import rc
 from matplotlib.patches import Polygon
 import importlib.resources
 
-from d3dslic3r.d3dslic3r_common import *
+from d3dslic3r_common import *
 from d3dslic3r.d3dslic3r_gui_common import *
 from d3dslic3r.export_widget import export_widget
 from d3dslic3r.transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
@@ -617,27 +617,28 @@ class interactor(QtWidgets.QWidget):
         """
         Performs slicing operation based on ui values
         """
-        num_of_sub_div = 0
-        max_attempts = 5        
-        for attempt in range(max_attempts):
-            self.get_slices_data(num_of_sub_div + attempt)
-            #order points (no idea why order points in this script did not work)
-            # for i in range(len(self.outlines)):
-            #     self.outlines[i] = order_points_in_loop(self.outlines[i])
-            
-            # Check for self-intersections and attempt to fix
-            for i in range(len(self.outlines)):
-                if is_self_intersecting(self.outlines[i]):
-                    print(f'Self-intersected outline at slice {i} on attempt {attempt + 1}')
-                    break
-            else:
-                # No self-intersections found, exit the loop
-                print(f'No self-intersected outlines found after {attempt + 1} attempts')
-                break
-        else:
-            print(f'Failed to fix self-intersected outlines after {max_attempts} attempts')
-
         
+        if hasattr(self,'slice_actors'):
+            self.ren.RemoveActor(self.slice_actors)
+            self.ui.slice_num_cb.clear()
+            del self.slice_data
+        
+        
+        if self.ui.quantity_rb.isChecked():
+            self.outlines, self.slice_actors = get_slice_data(self.polydata,self.ui.by_num_sb.value())
+        else:
+            self.outlines, self.slice_actors = get_slice_data(self.polydata,self.ui.by_height_sb.value(), False)
+        
+        self.outlines = get_sub_slice_data(self.outlines,self.ui.agglom_param_sb.value())
+        
+        #order points
+        for i in range(len(self.outlines)):
+            self.outlines[i] = order_points_in_loop(self.outlines[i])
+            #check for self intersection
+            if check_self_intersecting(self.outlines[i]):
+                print('Issue on slice %i'%i)
+            
+        self.slice_data = [None] * len(self.outlines)
         
         for i in range(len(self.outlines)):
             self.ui.slice_num_cb.insertItem(i,'Slice %d'%i)
@@ -649,18 +650,6 @@ class interactor(QtWidgets.QWidget):
         self.ren.AddActor(self.slice_actors)
         self.ui.vtkWidget.update()
 
-    def get_slices_data(self, num_of_sub_div):
-        if hasattr(self,'slice_actors'):
-            self.ren.RemoveActor(self.slice_actors)
-            self.ui.slice_num_cb.clear()
-            del self.slice_data
-        if self.ui.quantity_rb.isChecked():
-            self.outlines, self.slice_actors = get_slice_data(self.polydata,self.ui.by_num_sb.value(), num_of_sub_div=num_of_sub_div)
-        else:
-            self.outlines, self.slice_actors = get_slice_data(self.polydata,self.ui.by_height_sb.value(), False, num_of_sub_div=num_of_sub_div)
-        
-        self.outlines = get_sub_slice_data(self.outlines,self.ui.agglom_param_sb.value())
-        self.slice_data = [None] * len(self.outlines)
     def draw_slice(self):
         
         #get active outline
@@ -756,10 +745,12 @@ class interactor(QtWidgets.QWidget):
             if self.ui.path_outline_cb.isChecked():
                 interior = offset_poly(outline,-self.ui.by_width_sb.value())
                 midline = offset_poly(outline,-self.ui.by_width_sb.value()*0.5)
-                intersections, param = get_intersections(midline,theta,self.ui.by_width_sb.value(),offset)
+                innie = offset_poly(outline,-self.ui.by_width_sb.value())
+                intersections, param = get_intersections(innie,theta,self.ui.by_width_sb.value(),offset)
                 local_path_collection.append(midline)
             else:
                 intersections, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
+            
 
             self.ui.bead_offset_sb.setValue(param*100)
             self.ui.num_paths_label.setText('N = %i'%(len(intersections)-1))
