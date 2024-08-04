@@ -35,7 +35,7 @@ def order_points_in_loop(points):
 
     return np.array(ordered_points)
 
-def get_slice_data(polydata,param,num_slices = True):
+def get_slice_data(inp_polydata,param,num_slices = True):
     """
     Obtains x,y pairs corresponding to a vtkCutter operation on input polydata 
     Params:
@@ -46,6 +46,9 @@ def get_slice_data(polydata,param,num_slices = True):
     slices: list of numpy arrays corresponding to each polydata intersection
     slice_actor_collection: vtkAssembly of slices for display
     """
+    #make sure that incoming polydata isn't connected to anything
+    polydata = vtk.vtkPolyData()
+    polydata.DeepCopy(inp_polydata)
     #suppress output from the vtk logger
     vtk.vtkLogger.SetStderrVerbosity(vtk.vtkLogger.VERBOSITY_OFF)
     
@@ -62,6 +65,7 @@ def get_slice_data(polydata,param,num_slices = True):
 
     slice_actor_collection = vtk.vtkAssembly()
     slices = []
+    
     for z in z_vals:
         plane = vtk.vtkPlane()
         plane.SetNormal(0, 0, 1)
@@ -72,13 +76,32 @@ def get_slice_data(polydata,param,num_slices = True):
         cutter.SetInputData(polydata)
         cutter.Update()
         
-        points = cutter.GetOutput().GetPoints()
+        #create loop extractor
+        loops_extract = vtk.vtkContourLoopExtraction()
+        #make sure loops are closed
+        loops_extract.SetOutputModeToPolylines()
+        #remove any duplicates etc.
+        loops_extract.CleanPointsOn()
+        loops_extract.SetInputData(cutter.GetOutput())
+        loops_extract.Update()
         
-        # Convert VTK points to numpy array
-        if points:
-            slice_points = v2n(points.GetData())
-            slices.append(slice_points)
+        #get output from loop extractor
+        output = loops_extract.GetOutput()
+        loop_points = output.GetPoints().GetData()
+        loops = output.GetLines().GetData()
+        num_loops = output.GetLines().GetNumberOfCells()
         
+        #acquire discrete loops from loop extractor. index references the specific loop in each slice
+        index = 0
+        for i in range(num_loops):
+            #poly_point_count is the number of points that comprise each loop
+            poly_point_count = np.asarray(loops)[index]
+            #generate local index of points that comprise each loop
+            poly_point_ind = np.asarray(loops)[index + 1:index + 1 + poly_point_count]
+            #push to slices
+            slices.append(np.asarray(loop_points)[poly_point_ind,:])
+            index += poly_point_count + 1
+
         # Create a mapper and actor for visualization
         cutter_mapper = vtk.vtkPolyDataMapper()
         cutter_mapper.SetInputConnection(cutter.GetOutputPort())
@@ -88,6 +111,9 @@ def get_slice_data(polydata,param,num_slices = True):
         actor.GetProperty().SetLineWidth(2)
         actor.SetMapper(cutter_mapper)
         slice_actor_collection.AddPart(actor)
+
+    #debug
+    # np.savetxt('new_outlines.csv', slices[0], delimiter=',')        
         
     return slices, slice_actor_collection
 
@@ -274,20 +300,20 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     Intersections in all cases, the width of each pass or the number of passes depending on pass_param
     """
     
-    zval = np.mean(outline[:,-1])
-    print('get intersections',zval)
-    # outline = outline[:,0:2]
+    trans_cent = np.eye(4)
+    #move outline to centroid
+    trans_cent[0:3,-1] = -np.mean(outline, axis=0)
+    X = do_transform(outline,trans_cent)
+    #and rotate by angular_offset
     trans = np.eye(4)
-    #move outline to centroid and rotate by angular_offset
     a = np.deg2rad(angular_offset) #negative for counterclockwise
     trans[0:2,0:2]=np.array([[np.cos(a),-np.sin(a)],[np.sin(a),np.cos(a)]])
-    trans[0:3,-1] = -np.mean(outline, axis=0)
-    X = do_transform(outline,trans)
-    
+    X = do_transform(X,trans)
+    zval = np.mean(X[:,-1])
     
     limits = get_limits(X,0.)
 
-    yrange = [limits[2]*1.2,limits[3]*1.2]
+    yrange = [limits[2]*2,limits[3]*2]
     #break up on the basis of bead width
     num_passes = int(np.floor((limits[1]-(width*bead_offset) - limits[0]+(width*bead_offset))/(width*bead_offset)))
     xrange = np.linspace(limits[0]+(width*bead_offset),limits[1]-(width*bead_offset),num_passes)
@@ -305,8 +331,9 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     #Needs to be 3D for transformation
     intersections = np.asarray(intersections)
     trans_intersections = do_transform(intersections,np.linalg.inv(trans))
+    trans_intersections = do_transform(trans_intersections,np.linalg.inv(trans_cent))
     #return intersections , actual bead offset
-    return np.column_stack((trans_intersections[:,0:2],np.ones(len(intersections))*zval)) , (xrange[1]-xrange[0])/width
+    return trans_intersections, (xrange[1]-xrange[0])/width
 
 def line_intersection(line1, line2):
     '''
@@ -381,7 +408,8 @@ def respace_equally(X,val):
     Ynew=fy(sNew)
     
     X_new=np.stack((Xnew,Ynew),axis=-1)
-    X_new = np.vstack((X_new, X_new[0,:]))#make sure last point is the same as the first point
+    if not closed:
+        X_new = np.vstack((X_new, X_new[0,:]))#make sure last point is the same as the first point
     return X_new,Perimeter,nPts
 
 def offset_poly(poly, offset):

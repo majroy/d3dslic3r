@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: d3dslic3r
-Version: 0.3.post1
+Version: 0.3.post2
 Summary: DED SLICER
 Home-page: https://github.com/majroy/d3dslic3r
 Author: M J Roy
@@ -16,5 +16,15 @@ Classifier: Programming Language :: Python :: 3.11
 Classifier: Intended Audience :: End Users/Desktop
 Classifier: Natural Language :: English
 License-File: LICENSE
+Requires-Dist: vtk>=6.0
+Requires-Dist: numpy
+Requires-Dist: scipy
+Requires-Dist: pyyaml>=5.0
+Requires-Dist: matplotlib
+Requires-Dist: PyQt5>=5
+Requires-Dist: h5py
+Requires-Dist: scikit-learn
+Requires-Dist: shapely
+Requires-Dist: pyclipper
 
 https://github.com/majroy/d3dslic3r

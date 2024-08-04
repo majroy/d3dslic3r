@@ -23,7 +23,7 @@ from matplotlib import rc
 from matplotlib.patches import Polygon
 import importlib.resources
 
-from d3dslic3r_common import *
+from d3dslic3r.d3dslic3r_common import *
 from d3dslic3r.d3dslic3r_gui_common import *
 from d3dslic3r.export_widget import export_widget
 from d3dslic3r.transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
@@ -154,13 +154,6 @@ class main_window(QtWidgets.QWidget):
         self.by_num_sb.setMaximum(10000)
         self.by_num_sb.setValue(20)
         self.by_num_sb.setToolTip('Specify number of slices')
-        self.agglom_param_sb = QtWidgets.QDoubleSpinBox()
-        self.agglom_param_sb.setPrefix('Threshold = ')
-        self.agglom_param_sb.setMinimum(0.001)
-        self.agglom_param_sb.setMaximum(10000)
-        self.agglom_param_sb.setDecimals(1)
-        self.agglom_param_sb.setValue(5)
-        self.agglom_param_sb.setToolTip('Threshold for sub-slicing')
         self.update_slice_button = QtWidgets.QPushButton('Slice')
         self.update_slice_button.setToolTip('Slice with given paramters')
 
@@ -169,7 +162,6 @@ class main_window(QtWidgets.QWidget):
         slice_layout.addWidget(self.quantity_rb, 1, 1, 1, 1)
         slice_layout.addWidget(self.by_height_sb,2,0,1,1)
         slice_layout.addWidget(self.by_num_sb,2,1,1,1)
-        slice_layout.addWidget(self.agglom_param_sb,3,0,1,1)
         slice_layout.addWidget(self.update_slice_button,3,1,1,1)
         
         self.slice_box.setEnabled(False)
@@ -188,6 +180,7 @@ class main_window(QtWidgets.QWidget):
         self.path_outline_cb.setToolTip('Include outline in pathing')
         self.rotate_z_path_sb = QtWidgets.QDoubleSpinBox()
         self.rotate_z_path_sb.setToolTip('Rotational offset for pathing of slice. Positive is clockwise.')
+        self.rotate_z_path_sb.setSingleStep(5.00)
         self.rotate_z_path_sb.setValue(0)
         self.rotate_z_path_sb.setMaximum(180)
         self.rotate_z_path_sb.setMinimum(-180)
@@ -629,12 +622,8 @@ class interactor(QtWidgets.QWidget):
         else:
             self.outlines, self.slice_actors = get_slice_data(self.polydata,self.ui.by_height_sb.value(), False)
         
-        self.outlines = get_sub_slice_data(self.outlines,self.ui.agglom_param_sb.value())
-        
         #order points
         for i in range(len(self.outlines)):
-            self.outlines[i] = order_points_in_loop(self.outlines[i])
-            #check for self intersection
             if check_self_intersecting(self.outlines[i]):
                 print('Issue on slice %i'%i)
             
@@ -752,8 +741,8 @@ class interactor(QtWidgets.QWidget):
                 intersections, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
             
 
-            self.ui.bead_offset_sb.setValue(param*100)
-            self.ui.num_paths_label.setText('N = %i'%(len(intersections)-1))
+            # update interactor with result
+            self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersections)-1,param*100))
             
         #pack up/pair intersections for line paths
         for i in np.arange(len(intersections)-1)[::2]:
