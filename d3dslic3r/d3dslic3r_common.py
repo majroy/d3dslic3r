@@ -330,6 +330,7 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
                 intersections.append(np.array([local_intersection[0],local_intersection[1],zval]))
     #Needs to be 3D for transformation
     intersections = np.asarray(intersections)
+    intersections = intersections[np.lexsort((intersections[:, 1], intersections[:, 0]))]
     trans_intersections = do_transform(intersections,np.linalg.inv(trans))
     trans_intersections = do_transform(trans_intersections,np.linalg.inv(trans_cent))
     #return intersections , actual bead offset
