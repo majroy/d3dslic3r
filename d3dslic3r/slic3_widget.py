@@ -23,7 +23,7 @@ from matplotlib import rc
 from matplotlib.patches import Polygon
 import importlib.resources
 
-from d3dslic3r.d3dslic3r_common import *
+from d3dslic3r_common import *
 from d3dslic3r.d3dslic3r_gui_common import *
 from d3dslic3r.export_widget import export_widget
 from d3dslic3r.transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
@@ -174,7 +174,7 @@ class main_window(QtWidgets.QWidget):
         #make path_gen layout
         path_gen_layout = QtWidgets.QGridLayout()
         self.path_all_cb = QtWidgets.QCheckBox('Path all')
-        self.path_all_cb.setEnabled(False)
+        self.path_all_cb.setEnabled(True)
         self.path_all_cb.setToolTip('Apply to all slices')
         self.path_outline_cb = QtWidgets.QCheckBox('Path outline')
         self.path_outline_cb.setToolTip('Include outline in pathing')
@@ -722,34 +722,49 @@ class interactor(QtWidgets.QWidget):
         """
         Updates the slice_obj for each slice to include a 'paths' entry. Calls draw_paths to draw them.
         """
-        
-        local_path_collection = []
+        theta = self.ui.rotate_z_path_sb.value()
+        offset = self.ui.bead_offset_sb.value()/100
         
         if not self.ui.path_all_cb.isChecked():
-        
+            local_path_collection = [] 
             entry = self.ui.slice_num_cb.currentIndex()
             outline = self.slice_data[entry].outline
-            theta = self.ui.rotate_z_path_sb.value()
-            offset = self.ui.bead_offset_sb.value()/100
+
             if self.ui.path_outline_cb.isChecked():
                 interior = offset_poly(outline,-self.ui.by_width_sb.value())
                 midline = offset_poly(outline,-self.ui.by_width_sb.value()*0.5)
                 innie = offset_poly(outline,-self.ui.by_width_sb.value())
-                intersections, param = get_intersections(innie,theta,self.ui.by_width_sb.value(),offset)
+                intersecting_lines, param = get_intersections(innie,theta,self.ui.by_width_sb.value(),offset)
                 local_path_collection.append(midline)
+                local_path_collection.extend(intersecting_lines)
             else:
-                intersections, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
-            
+                intersecting_lines, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
+                local_path_collection = intersecting_lines
 
-            # update interactor with result
-            self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersections)-1,param*100))
-            
-        #pack up/pair intersections for line paths
-        for i in np.arange(len(intersections)-1)[::2]:
-            local_path_collection.append(np.array([intersections[i,:], intersections[i+1,:]]))
-            
+            self.slice_data[entry].paths = local_path_collection #list of paths
         
-        self.slice_data[entry].paths = local_path_collection #list of paths
+        else: #iterate over all entries
+            for i in range(self.ui.slice_num_cb.count()):
+                self.ui.slice_num_cb.setCurrentIndex(i)
+                local_path_collection = []
+                entry = self.ui.slice_num_cb.currentIndex()
+                outline = self.slice_data[entry].outline
+        
+                if self.ui.path_outline_cb.isChecked():
+                    interior = offset_poly(outline,-self.ui.by_width_sb.value())
+                    midline = offset_poly(outline,-self.ui.by_width_sb.value()*0.5)
+                    innie = offset_poly(outline,-self.ui.by_width_sb.value())
+                    intersecting_lines, param = get_intersections(innie,theta,self.ui.by_width_sb.value(),offset)
+                    local_path_collection.append(midline)
+                    local_path_collection.extend(intersecting_lines)
+                else:
+                    intersecting_lines, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
+                    local_path_collection = intersecting_lines
+
+                self.slice_data[entry].paths = local_path_collection #list of paths
+        
+        # update interactor with result
+        self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersecting_lines),param*100))
         self.ui.export_slice.setEnabled(True)
         self.draw_slice() #to clear any existing intersections
 

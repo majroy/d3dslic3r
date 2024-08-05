@@ -293,11 +293,13 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     """
     Returns intersections running from a series of lines drawn from -x to +x, -y to +y for a constant z value
     Params:
-    outline - ordered 3D outline points, z must be constant
-    angular_offset - rotation which intersection lines are solved for
-    pass_param - either the number of lines or the distance between lines (default) depending on if 'number' is true or false.
+        outline - ordered 3D outline points, z must be constant
+        angular_offset - rotation which intersection lines are solved for
+        width - target bead width
+        bead_offset - ratio of bead width to offset each path (0.5 = 50%)
     Returns:
-    Intersections in all cases, the width of each pass or the number of passes depending on pass_param
+        path_list - A list of intersecting lines with dual entry Numpy arrays describing the start and end of each line
+        actual_bead_offset - and the bead_offset achieved
     """
     
     trans_cent = np.eye(4)
@@ -317,7 +319,9 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     #break up on the basis of bead width
     num_passes = int(np.floor((limits[1]-(width*bead_offset) - limits[0]+(width*bead_offset))/(width*bead_offset)))
     xrange = np.linspace(limits[0]+(width*bead_offset),limits[1]-(width*bead_offset),num_passes)
-        
+    
+    actual_bead_offset = (xrange[1]-xrange[0])/width
+    
     intersections = []
     for k in range(len(xrange)):
         line = np.array([[xrange[k],yrange[0]], [xrange[k],yrange[1]]])
@@ -333,8 +337,13 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     intersections = intersections[np.lexsort((intersections[:, 1], intersections[:, 0]))]
     trans_intersections = do_transform(intersections,np.linalg.inv(trans))
     trans_intersections = do_transform(trans_intersections,np.linalg.inv(trans_cent))
+    
+    #pack up/pair intersections for line paths
+    path_list = []
+    for i in np.arange(len(trans_intersections)-1)[::2]:
+        path_list.append(np.array([trans_intersections[i,:], trans_intersections[i+1,:]]))
     #return intersections , actual bead offset
-    return trans_intersections, (xrange[1]-xrange[0])/width
+    return path_list, actual_bead_offset
 
 def line_intersection(line1, line2):
     '''
