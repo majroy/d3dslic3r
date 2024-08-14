@@ -16,6 +16,7 @@ import numpy as np
 from PyQt5 import QtGui, QtWidgets, QtCore, QtSvg
 from PyQt5.QtCore import Qt
 from pkg_resources import Requirement, resource_filename
+from export_to_kuka import export_to_kuka
 
 class export_widget(QtWidgets.QDialog):
 
@@ -89,16 +90,7 @@ class export_widget(QtWidgets.QDialog):
         if not os.path.isdir(self.work_dir_path.text()):
             return
         
-        i = 0
-        for slice_obj in self.slice_data:
-            
-            if slice_obj is not None:
-                j = 0
-                if slice_obj.paths is not None:
-                    for path in slice_obj.paths:
-                        np.savetxt(os.path.join(self.work_dir_path.text(),"%s_%i_%i.txt"%(self.prefix.text(),i,j)),path)
-                        j+=1
-            i+=1
+        export_to_kuka(self)
         
         pix_map2 = QtGui.QPixmap(resource_filename("d3dslic3r","meta/dippy.png"))
         self.clip_label.setPixmap(pix_map2)
