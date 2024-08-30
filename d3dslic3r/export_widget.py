@@ -16,13 +16,14 @@ import numpy as np
 from PyQt5 import QtGui, QtWidgets, QtCore, QtSvg
 from PyQt5.QtCore import Qt
 from pkg_resources import Requirement, resource_filename
-from export_to_kuka import export_to_kuka
+import export_paths
 
 class export_widget(QtWidgets.QDialog):
 
-    def __init__(self, parent, slice_data):
+    def __init__(self, parent, slice_data, ui):
         super(export_widget, self).__init__(parent)
         self.slice_data = slice_data
+        self.ui = ui
 
         self.setWindowTitle("d3dslic3r - export")
         self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
@@ -48,6 +49,10 @@ class export_widget(QtWidgets.QDialog):
         wd_choose_path.setAutoDefault(False)
         
         export = QtWidgets.QPushButton('Execute')
+
+        output_label = QtWidgets.QLabel("Output format:")
+        self.output_box = QtWidgets.QComboBox()
+        self.output_box.addItems(["Text", "KUKA"])
         
         param_layout.addWidget(prefix_label,0,0,1,1)
         param_layout.addWidget(self.prefix,0,1,1,2)
@@ -55,6 +60,9 @@ class export_widget(QtWidgets.QDialog):
         param_layout.addWidget(work_dir_path_label,1,0,1,1)
         param_layout.addWidget(self.work_dir_path,1,1,1,2)
         param_layout.addWidget(wd_choose_path,1,3,1,1)
+        
+        param_layout.addWidget(output_label,2,0,1,1)
+        param_layout.addWidget(self.output_box,2,1,1,2)
         
         main_layout = QtWidgets.QVBoxLayout()
         main_layout.addWidget(desc)
@@ -90,7 +98,11 @@ class export_widget(QtWidgets.QDialog):
         if not os.path.isdir(self.work_dir_path.text()):
             return
         
-        export_to_kuka(self)
+        # export to kuka only if path outline has been checked
+        if self.output_box.currentIndex() == 1 and self.ui.path_outline_cb.isChecked():
+            export_paths.to_kuka(self)
+        else:
+            export_paths.to_txt(self)
         
         pix_map2 = QtGui.QPixmap(resource_filename("d3dslic3r","meta/dippy.png"))
         self.clip_label.setPixmap(pix_map2)

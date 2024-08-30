@@ -17,7 +17,7 @@ import vtk.util.numpy_support as v2n
 from PyQt5 import QtGui, QtWidgets, QtCore
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 import yaml
-from d3dslic3r.d3dslic3r_gui_common import get_file, get_save_file
+from d3dslic3r_gui_common import get_file, get_save_file
 import importlib.resources
 
 class execute(QThread):

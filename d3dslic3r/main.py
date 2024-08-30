@@ -15,8 +15,8 @@ import sys,os,ctypes
 from PyQt5 import QtCore, QtGui, QtWidgets
 from PyQt5.QtCore import QTimer
 import vtk
-import d3dslic3r.slic3_widget as slic3_widget
-from d3dslic3r.d3dslic3r_gui_common import make_splash
+import slic3_widget as slic3_widget
+from d3dslic3r_gui_common import make_splash
 import importlib.resources
 
 class main_window(QtWidgets.QMainWindow):

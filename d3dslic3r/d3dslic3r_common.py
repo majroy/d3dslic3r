@@ -2,8 +2,8 @@ import numpy as np
 import vtk
 from scipy.spatial.distance import cdist
 from scipy.spatial import Delaunay
-from vtk.util.numpy_support import vtk_to_numpy as v2n
-from vtk.util.numpy_support import numpy_to_vtk as n2v
+from vtkmodules.util.numpy_support import vtk_to_numpy as v2n
+from vtkmodules.util.numpy_support import numpy_to_vtk as n2v
 from sklearn.cluster import AgglomerativeClustering
 from shapely.ops import unary_union, polygonize
 import shapely.geometry as geometry
