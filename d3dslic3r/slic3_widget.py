@@ -24,9 +24,9 @@ from matplotlib.patches import Polygon
 import importlib.resources
 
 from d3dslic3r_common import *
-from d3dslic3r_gui_common import *
-from export_widget import export_widget
-from transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
+from d3dslic3r.d3dslic3r_gui_common import *
+from d3dslic3r.export_widget import export_widget
+from d3dslic3r.transform_widget import make_transformation_button_layout, get_trans_from_euler_angles
 
 
 def launch(*args, **kwargs):
@@ -787,7 +787,7 @@ class interactor(QtWidgets.QWidget):
         '''
         Create pop-up which shows the user what's going to happen
         '''
-        ew = export_widget(self, self.slice_data, self.ui)
+        ew = export_widget(self, self.slice_data)
         ew.exec_()
 
         

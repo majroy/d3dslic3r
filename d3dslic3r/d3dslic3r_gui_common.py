@@ -2,7 +2,7 @@ import os
 import vtk
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-from vtkmodules.util.numpy_support import numpy_to_vtk as n2v
+from vtk.util.numpy_support import numpy_to_vtk as n2v
 import importlib.resources
 
 class collapsible_box(QtWidgets.QWidget):
