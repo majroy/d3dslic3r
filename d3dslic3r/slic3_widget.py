@@ -13,8 +13,8 @@ __copyright__ = "(c) M. J. Roy, 2024-"
 import os, sys
 import numpy as np
 import vtk
-from vtk.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
-from vtk.util.numpy_support import vtk_to_numpy as v2n
+from vtkmodules.qt.QVTKRenderWindowInteractor import QVTKRenderWindowInteractor
+from vtkmodules.util.numpy_support import vtk_to_numpy as v2n
 from PyQt5 import QtGui, QtWidgets, QtCore
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
