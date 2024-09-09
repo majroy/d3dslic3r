@@ -154,6 +154,95 @@ def get_polydata_from_stl(fname):
 
     return polydata
 
+def get_skeleton_dict(outline,whole_angle,step_size,suggested_hatching_offset):
+    """
+    Returns a dictionary of skeleton lines for each hatch angle
+
+    skeleton_dict structure:
+    {
+        hatch_angle1: {  
+            skeleton1: [midpoint1, midpoint2, ...]
+            skeleton2: [midpoint1, midpoint2, ...]
+        }
+        hatch_angle2: {
+            skeleton1: [midpoint1, midpoint2, ...]
+            skeleton2: [midpoint1, midpoint2, ...]
+        }
+    }
+    """
+
+    midpoint_line_dict = {hatch_angle: [] for hatch_angle in np.arange(0, whole_angle, step_size)}
+    for hatch_angle in np.arange(0, whole_angle, step_size):
+        intersecting_lines, _, num_of_line_list = get_intersections(outline,hatch_angle,
+                                                                    suggested_hatching_offset,0.5)
+
+        # Get all the unique values in num_of_line_list
+        lines_index_list = list(set(num_of_line_list))
+        midpoint_line_dict[hatch_angle] = {line_index: [] for line_index in lines_index_list}
+        
+        for line_index, number_of_line in enumerate(num_of_line_list):
+            if number_of_line in lines_index_list:
+                midpoint = (intersecting_lines[line_index][0] + intersecting_lines[line_index][1]) / 2
+                midpoint_line_dict[hatch_angle][number_of_line].append(midpoint)
+    return midpoint_line_dict
+
+def get_central_line_path(skeleton_dict, entry):
+    """
+    Returns a list of central line paths for each entry
+    """
+    certral_line_path = []
+    for rotate_angle_line1, path_index_line1 in skeleton_dict.items():
+        for skeleton_line1 in path_index_line1.values():
+            if len(skeleton_line1) > 1:
+                for line_index1 in range(len(skeleton_line1) - 1):
+                    P1 = skeleton_line1[line_index1][:2]
+                    P2 = skeleton_line1[line_index1 + 1][:2]
+                    line1 = [P1, P2]
+                    for rotate_angle_line2, path_index_line2 in skeleton_dict.items():
+                        if rotate_angle_line2 != rotate_angle_line1:
+                            for skeleton_line2 in path_index_line2.values():
+                                if len(skeleton_line2) > 1:
+                                    for line_index2 in range(len(skeleton_line2) - 1):
+                                        P3 = skeleton_line2[line_index2][:2]
+                                        P4 = skeleton_line2[line_index2 + 1][:2]
+                                        line2 = [P3, P4]
+                                        local_intersection = line_intersection(line1, line2)
+                                        if local_intersection is not None:
+                                            certral_line_path.append(np.array([local_intersection[0],
+                                                                    local_intersection[1],entry]))
+    return np.array(certral_line_path)
+
+def reorder_points_based_on_intersetion(cleaned_certral_line_path, outline):
+    """
+    Reorder the points in the central line path based on the intersection with the outline
+    If intersection is found, the points before the intersection will be reversed
+    if the distance between the first point and the intersection is less than 1, 
+    (this needs to be adjusted based on the actual distance, need to be improved)
+    the points after the interseciton will also be reversed.
+    """
+    reordered_certral_line_path = []
+    for line1_index in range(len(cleaned_certral_line_path) - 1):
+        P1 = cleaned_certral_line_path[line1_index]
+        P2 = cleaned_certral_line_path[line1_index + 1]
+        line1 = [P1, P2]
+        for line2_index in range(len(outline) - 1):
+            P3 = outline[line2_index]
+            P4 = outline[line2_index + 1]
+            line2 = [P3, P4]
+            local_intersection = line_intersection(line1, line2)
+            if local_intersection is not None:
+                distance = np.linalg.norm(np.array(P2) - np.array(cleaned_certral_line_path[0]))
+                # To be improved
+                if distance < 1:
+                    reordered_certral_line_path = np.concatenate((cleaned_certral_line_path[:line1_index+1][::-1], 
+                                                cleaned_certral_line_path[line1_index+1:]))
+                    return reordered_certral_line_path
+                else:
+                    reordered_certral_line_path = np.concatenate((cleaned_certral_line_path[:line1_index+1][::-1], 
+                                                cleaned_certral_line_path[line1_index+1:][::-1]))
+                    return reordered_certral_line_path
+    return reordered_certral_line_path
+
 def actor_from_polydata(polydata):
     """
     Wrap the provided vtkPolyData object in a mapper and an actor, returning
@@ -169,6 +258,24 @@ def actor_from_polydata(polydata):
     stl_actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Gray'))
 
     return stl_actor
+
+def get_starting_point(inp):
+    """
+    get the starting point of the outline based on the distance between points
+    if the distance between two points is the largest, the starting point is the first point
+    """
+    
+    points = inp[:,0:2]
+    dist = []
+    for i in range(len(points)-1):
+        distance = np.linalg.norm(points[i+1] - points[i])
+        dist.append(distance)
+        
+    mean = np.mean(dist)
+    std = np.std(dist)
+    z_scores = [(x - mean) / std for x in dist]
+    outliers = np.argmax(z_scores)
+    return outliers
 
 def sort_ccw(inp):
     """
@@ -319,31 +426,54 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     #break up on the basis of bead width
     num_passes = int(np.floor((limits[1]-(width*bead_offset) - limits[0]+(width*bead_offset))/(width*bead_offset)))
     xrange = np.linspace(limits[0]+(width*bead_offset),limits[1]-(width*bead_offset),num_passes)
-    
-    actual_bead_offset = (xrange[1]-xrange[0])/width
+
+    if len(xrange) < 2:
+        actual_bead_offset = 0
+    else:
+        actual_bead_offset = (xrange[1]-xrange[0])/width
     
     intersections = []
+    point_list = []  
+    previous_max_point_num = 0
+    mode_change_times = 0
     for k in range(len(xrange)):
         line = np.array([[xrange[k],yrange[0]], [xrange[k],yrange[1]]])
         line1 = tuple([tuple(x) for x in line.tolist()])
 
+        point_index = 0
+        
         for i in range(len(X)-1):
             line2 = tuple([tuple(x) for x in X[i:i+2,:]])
             local_intersection = line_intersection(line1, line2)
             if local_intersection is not None:
+                point_index += 1
+                
                 intersections.append(np.array([local_intersection[0],local_intersection[1],zval]))
+        if point_index != previous_max_point_num:
+            previous_max_point_num = point_index
+            mode_change_times += 1
+        temp_list = [x + mode_change_times*100 for x in range(point_index)]
+        temp_list = [str(x) for x in temp_list]
+        point_list.extend(temp_list)
+    
     #Needs to be 3D for transformation
     intersections = np.asarray(intersections)
-    intersections = intersections[np.lexsort((intersections[:, 1], intersections[:, 0]))]
-    trans_intersections = do_transform(intersections,np.linalg.inv(trans))
-    trans_intersections = do_transform(trans_intersections,np.linalg.inv(trans_cent))
+    if len(intersections) > 1:
+        intersections = intersections[np.lexsort((intersections[:, 1], intersections[:, 0]))]
+        trans_intersections = do_transform(intersections,np.linalg.inv(trans))
+        trans_intersections = do_transform(trans_intersections,np.linalg.inv(trans_cent))
     
-    #pack up/pair intersections for line paths
-    path_list = []
-    for i in np.arange(len(trans_intersections)-1)[::2]:
-        path_list.append(np.array([trans_intersections[i,:], trans_intersections[i+1,:]]))
+        #pack up/pair intersections for line paths
+        path_list = []
+        line_index_list = []
+        for i in np.arange(len(trans_intersections)-1)[::2]:
+            path_list.append(np.array([trans_intersections[i,:], trans_intersections[i+1,:]]))
+            line_index_list.append(point_list[i])
+    else:
+        path_list = []
+        line_index_list = []
     #return intersections , actual bead offset
-    return path_list, actual_bead_offset
+    return path_list, actual_bead_offset, line_index_list
 
 def line_intersection(line1, line2):
     '''
@@ -370,9 +500,9 @@ def line_intersection(line1, line2):
 
     if det == 0.0:  # lines are parallel
     
-        if line1[0] == line2[0] or line1[1] == line2[0]:
+        if np.array_equal(line1[0], line2[0]) or np.array_equal(line1[1], line2[0]):
             return line2[0]
-        elif line1[0] == line2[1] or line1[1] == line2[1]:
+        elif np.array_equal(line1[0], line2[1]) or np.array_equal(line1[1], line2[1]):
             return line2[1]
         
         #Special cases

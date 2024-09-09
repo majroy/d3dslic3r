@@ -178,6 +178,8 @@ class main_window(QtWidgets.QWidget):
         self.path_all_cb.setToolTip('Apply to all slices')
         self.path_outline_cb = QtWidgets.QCheckBox('Path outline')
         self.path_outline_cb.setToolTip('Include outline in pathing')
+        self.path_central_line_cb = QtWidgets.QCheckBox('Path central line')
+        self.path_central_line_cb.setToolTip('Get the central line of the outline')
         self.rotate_z_path_sb = QtWidgets.QDoubleSpinBox()
         self.rotate_z_path_sb.setToolTip('Rotational offset for pathing of slice. Positive is clockwise.')
         self.rotate_z_path_sb.setSingleStep(5.00)
@@ -209,11 +211,12 @@ class main_window(QtWidgets.QWidget):
         #populate pathing layout
         path_gen_layout.addWidget(self.path_all_cb,0,0,1,1)
         path_gen_layout.addWidget(self.path_outline_cb,0,1,1,1)
-        path_gen_layout.addWidget(self.rotate_z_path_sb,0,2,1,1)
-        path_gen_layout.addWidget(self.by_width_sb,0,3,1,1)
-        path_gen_layout.addWidget(self.bead_offset_sb,0,4,1,1)
+        path_gen_layout.addWidget(self.path_central_line_cb,0,2,1,1)
+        path_gen_layout.addWidget(self.rotate_z_path_sb,0,3,1,1)
+        path_gen_layout.addWidget(self.by_width_sb,0,4,1,1)
+        path_gen_layout.addWidget(self.bead_offset_sb,0,5,1,1)
         path_gen_layout.addWidget(self.num_paths_label,1,0,1,2)
-        path_gen_layout.addWidget(self.activate_path_pb,1,4,1,1)
+        path_gen_layout.addWidget(self.activate_path_pb,1,5,1,1)
         
         self.path_box.setEnabled(False)
         
@@ -661,6 +664,8 @@ class interactor(QtWidgets.QWidget):
             self.slice_data[entry] = slice_obj(self.outlines[entry])
         
         outline = self.slice_data[entry].outline
+        central_line = self.slice_data[entry].central_line
+        intermediate_line = self.slice_data[entry].intermediate_line
         
         self.current_outline_actor = gen_outline_actor(outline, (1,0,0), 4)
         self.outline_caption_actor = gen_caption_actor('%s'%entry, self.current_outline_actor, (1,0,0))
@@ -674,6 +679,15 @@ class interactor(QtWidgets.QWidget):
         
         ax = self.ui.figure.add_subplot(111)
         ax.plot(outline[:,0], outline[:,1], 'k-')
+        if intermediate_line != []:
+            for line in intermediate_line:
+                x_coords = [point[0] for point in line]
+                y_coords = [point[1] for point in line]
+                ax.plot(x_coords, y_coords, 'g-')
+        #         # plot the points
+        #         ax.plot(x_coords, y_coords, 'ro')
+        if len(central_line) != 0:
+            ax.plot(central_line[:,0], central_line[:,1], 'r-')
         ax.set_ylabel("y (mm)")
         ax.set_xlabel("x (mm)")
         ax.grid(visible=True, which='major', color='#666666', linestyle='-', alpha=0.1)
@@ -734,14 +748,25 @@ class interactor(QtWidgets.QWidget):
                 interior = offset_poly(outline,-self.ui.by_width_sb.value())
                 midline = offset_poly(outline,-self.ui.by_width_sb.value()*0.5)
                 innie = offset_poly(outline,-self.ui.by_width_sb.value())
-                intersecting_lines, param = get_intersections(innie,theta,self.ui.by_width_sb.value(),offset)
+                intersecting_lines, param, _ = get_intersections(
+                                        innie,theta,self.ui.by_width_sb.value(),offset)
                 local_path_collection.append(midline)
                 local_path_collection.extend(intersecting_lines)
+                self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersecting_lines),param*100))
+                # update interactor with result
+                self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersecting_lines),param*100))
+
+            elif self.ui.path_central_line_cb.isChecked():
+                ordered_certral_line_path, skeleton_path = self.get_ordered_central_line_path(outline, entry)
+                self.slice_data[entry].central_line = np.array(ordered_certral_line_path)
+                self.slice_data[entry].intermediate_line = skeleton_path
+
             else:
-                intersecting_lines, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
+                intersecting_lines, param, _ = get_intersections(
+                                        outline,theta,self.ui.by_width_sb.value(),offset)
                 local_path_collection = intersecting_lines
 
-            self.slice_data[entry].paths = local_path_collection #list of paths
+                self.slice_data[entry].paths = local_path_collection #list of paths
         
         else: #iterate over all entries
             for i in range(self.ui.slice_num_cb.count()):
@@ -754,19 +779,60 @@ class interactor(QtWidgets.QWidget):
                     interior = offset_poly(outline,-self.ui.by_width_sb.value())
                     midline = offset_poly(outline,-self.ui.by_width_sb.value()*0.5)
                     innie = offset_poly(outline,-self.ui.by_width_sb.value())
-                    intersecting_lines, param = get_intersections(innie,theta,self.ui.by_width_sb.value(),offset)
+                    intersecting_lines, param, _ = get_intersections(
+                                                innie,theta,self.ui.by_width_sb.value(),offset)
                     local_path_collection.append(midline)
                     local_path_collection.extend(intersecting_lines)
+                    # update interactor with result
+                    self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersecting_lines),param*100))
+
+                elif self.ui.path_central_line_cb.isChecked():
+                    ordered_certral_line_path, skeleton_path = self.get_ordered_central_line_path(outline, entry)
+                    self.slice_data[entry].central_line = np.array(ordered_certral_line_path)
+                    self.slice_data[entry].intermediate_line = skeleton_path
+
                 else:
-                    intersecting_lines, param = get_intersections(outline,theta,self.ui.by_width_sb.value(),offset)
+                    intersecting_lines, param, _ = get_intersections(
+                                        outline,theta,self.ui.by_width_sb.value(),offset)
                     local_path_collection = intersecting_lines
 
                 self.slice_data[entry].paths = local_path_collection #list of paths
         
-        # update interactor with result
-        self.ui.num_paths_label.setText('N = %i at %0.2f%%'%(len(intersecting_lines),param*100))
+        
         self.ui.export_slice.setEnabled(True)
         self.draw_slice() #to clear any existing intersections
+
+    def get_ordered_central_line_path(self, outline, entry):
+        step_size = 30.01
+        limits = get_limits(outline,0)
+        suggested_hatching_offset = min((limits[1]-limits[0]),(limits[3]-limits[2]))/15
+        whole_angle = 180
+        skeleton_dict = get_skeleton_dict(outline,whole_angle,step_size,
+                                                    suggested_hatching_offset)
+
+        certral_line_path = get_central_line_path(skeleton_dict, entry)
+        ordered_certral_line_path = order_points_in_loop(certral_line_path)
+        starting_point_index = get_starting_point(ordered_certral_line_path)
+        ordered_certral_line_path = np.concatenate((ordered_certral_line_path[starting_point_index:], 
+                                                    ordered_certral_line_path[:starting_point_index]), axis=0)
+        ordered_certral_line_path = self.remove_repeated_points_preserve_order(ordered_certral_line_path)
+        ordered_certral_line_path = order_points_in_loop(ordered_certral_line_path)[:-1]
+        # get the skeleton of the outline
+        skeleton = []
+        for key in skeleton_dict.keys():
+            for value in skeleton_dict[key].values():
+                skeleton.append(value)
+        return ordered_certral_line_path, skeleton
+
+    def remove_repeated_points_preserve_order(self, points):
+        seen = set()
+        unique_points = []
+        for point in points:
+            point_tuple = tuple(point)
+            if point_tuple not in seen:
+                seen.add(point_tuple)
+                unique_points.append(point)
+        return np.array(unique_points)
 
     def draw_paths(self):
 
@@ -797,6 +863,8 @@ class slice_obj:
         self.outline = outline
         self.alpha = None
         self.paths = None
+        self.central_line = []
+        self.intermediate_line = []
 
 if __name__ == "__main__":
     launch()
