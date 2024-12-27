@@ -24,7 +24,7 @@ setup(name = 'd3dslic3r',
 
     install_requires=['vtk>=6.0','numpy','scipy','pyyaml>=5.0','matplotlib','PyQt5>=5','h5py','scikit-learn','shapely','pyclipper'],
     license = 'Creative Commons Attribution-Noncommercial-Share Alike license',
-    keywords = '3D printing, direct energy deposition, slicer, Computer aided manufacturing',
+    keywords = '3D printing, direct energy deposition, slicer, computer aided manufacturing',
     packages=['d3dslic3r', 'd3dslic3r.meta'],
     package_data = {'d3dslic3r' : ['README.MD',], 'd3dslic3r.meta' : ['*.*',] },
     include_package_data=True
