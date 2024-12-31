@@ -1,3 +1,14 @@
+#!/usr/bin/env python
+'''
+Functions and methods that are common to the d3dslic3r GUI implementations
+'''
+
+__author__ = "M.J. Roy"
+__version__ = "0.4"
+__email__ = "matthew.roy@manchester.ac.uk"
+__status__ = "Experimental"
+__copyright__ = "(c) M. J. Roy, 2024--"
+
 import os
 import vtk
 
@@ -94,7 +105,7 @@ def make_splash():
     splash.setFont(font)
     
     # splash.showMessage('v%s'%(version('d3dslic3r')),QtCore.Qt.AlignRight | QtCore.Qt.AlignBottom, QtCore.Qt.lightGray)
-    splash.showMessage('v%s'%("0.0.1"),QtCore.Qt.AlignRight | QtCore.Qt.AlignTop, QtCore.Qt.darkGray)
+    splash.showMessage('v%s'%__version__,QtCore.Qt.AlignRight | QtCore.Qt.AlignTop, QtCore.Qt.darkGray)
     return splash
 
 def make_logo(ren):
@@ -105,12 +116,24 @@ def make_logo(ren):
     logo = vtk.vtkLogoRepresentation()
     logo.SetImage(img_reader.GetOutput())
     logo.ProportionalResizeOn()
-    logo.SetPosition( 0.1, 0.1 ) #lower left
-    logo.SetPosition2( 0.8, 0.8 ) #upper right
+    logo.SetPosition( 0.25, 0.25 ) #lower left
+    logo.SetPosition2( 0.5, 0.5 ) #upper right
     logo.GetImageProperty().SetDisplayLocationToBackground()
     ren.AddViewProp(logo)
     logo.SetRenderer(ren)
     return logo
+
+def vtk_color3D_to_tuple(named_colour):
+    '''
+    Returns a tuple from "named_colour" on the interval of 0-1 for RGB
+    see names here: https://htmlpreview.github.io/?https://github.com/Kitware/vtk-examples/blob/gh-pages/VTKNamedColorPatches.html
+    '''
+    vtk_color = vtk.vtkNamedColors().GetColor3d(named_colour)
+    R = vtk_color.GetRed()
+    G = vtk_color.GetGreen()
+    B = vtk_color.GetBlue()
+    
+    return (R, G, B)
 
 def get_file(*args):
     '''
@@ -133,6 +156,13 @@ def get_file(*args):
         
     else: #return the filename/path
         return filer[0]
+
+def get_dir(*args):
+    folderpath = QtWidgets.QFileDialog.getExistingDirectory(None, 'Select Folder')
+    if folderpath == '':
+        return None
+    else:
+        return folderpath
 
 def get_save_file(*args):
     '''
@@ -184,13 +214,13 @@ def gen_outline_actor(pts, color = (1,1,1), size = 2):
     outline_actor.GetProperty().SetPointSize(size)
     return outline_actor
 
-def gen_caption_actor(message, actor = None, color = (0,0,0)):
+def gen_caption_actor(message, actor = None, color = (0,0,0), offset=[0,0,0]):
     '''
     Captions an actor
     '''
     caption_actor = vtk.vtkCaptionActor2D()
     b = actor.GetBounds()
-    caption_actor.SetAttachmentPoint((b[0],b[2],b[4]))
+    caption_actor.SetAttachmentPoint((b[0]+offset[0],b[2]+offset[1],b[4]+offset[2]))
     caption_actor.SetCaption(message)
     caption_actor.SetThreeDimensionalLeader(False)
     caption_actor.BorderOff()

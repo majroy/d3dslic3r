@@ -4,12 +4,14 @@ README.MD
 README.md
 setup.py
 d3dslic3r/__init__.py
+d3dslic3r/common.py
 d3dslic3r/cut_with_slic3r.py
-d3dslic3r/d3dslic3r_common.py
-d3dslic3r/d3dslic3r_gui_common.py
 d3dslic3r/export_widget.py
+d3dslic3r/gui_common.py
 d3dslic3r/main.py
+d3dslic3r/outline_widgets.py
 d3dslic3r/slic3_widget.py
+d3dslic3r/thin_wall.py
 d3dslic3r/transform_widget.py
 d3dslic3r.egg-info/PKG-INFO
 d3dslic3r.egg-info/SOURCES.txt
@@ -22,7 +24,6 @@ d3dslic3r/meta/background.png
 d3dslic3r/meta/clippy.png
 d3dslic3r/meta/d3dslic3r_config.yml
 d3dslic3r/meta/dippy.png
-d3dslic3r/meta/nogeometry.png
 d3dslic3r/meta/noslice.png
 d3dslic3r/meta/rotate_icon.png
 d3dslic3r/meta/scale_icon.png

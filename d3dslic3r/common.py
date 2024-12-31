@@ -1,39 +1,24 @@
+#!/usr/bin/env python
+'''
+Functions and methods that are common to d3dslic3r calculation routines
+'''
+
+__author__ = "M.J. Roy"
+__version__ = "0.4"
+__email__ = "matthew.roy@manchester.ac.uk"
+__status__ = "Experimental"
+__copyright__ = "(c) M. J. Roy, 2024--"
+
 import numpy as np
 import vtk
 from scipy.spatial.distance import cdist
 from scipy.spatial import Delaunay
 from vtk.util.numpy_support import vtk_to_numpy as v2n
 from vtk.util.numpy_support import numpy_to_vtk as n2v
-from sklearn.cluster import AgglomerativeClustering
 from shapely.ops import unary_union, polygonize
-import shapely.geometry as geometry
 from pyclipper import PyclipperOffset, scale_to_clipper, scale_from_clipper, JT_SQUARE, ET_CLOSEDPOLYGON
 from scipy.interpolate import interp1d
-from scipy.spatial import distance
-from shapely.geometry import LineString
-
-def order_points_in_loop(points):
-    """
-    Ensures points are ordered to form a continuous loop.
-    """
-    if len(points) < 2:
-        return points
-
-    ordered_points = [points[0]]
-    points = np.delete(points, 0, axis=0)
-
-    while len(points) > 0:
-        last_point = ordered_points[-1]
-        distances = distance.cdist([last_point], points)
-        nearest_index = np.argmin(distances)
-        ordered_points.append(points[nearest_index])
-        points = np.delete(points, nearest_index, axis=0)
-
-    # Check if the loop is closed and connect the last to the first point if necessary
-    if not np.array_equal(ordered_points[0], ordered_points[-1]):
-        ordered_points.append(ordered_points[0])
-
-    return np.array(ordered_points)
+from shapely.geometry import LineString, Polygon
 
 def get_slice_data(inp_polydata,param,num_slices = True):
     """
@@ -43,8 +28,10 @@ def get_slice_data(inp_polydata,param,num_slices = True):
     param is either the number of slices or height of each slice
     num_slices sets slicing on number of total slices (True, default)
     Returns:
-    slices: list of numpy arrays corresponding to each polydata intersection
+    slices: list of numpy arrays to grouped loops from the polydata entries
+    break_point_indices: list of paired loop break points
     slice_actor_collection: vtkAssembly of slices for display
+    TO DO: improve enumeration of parent/child slice determination
     """
     #make sure that incoming polydata isn't connected to anything
     polydata = vtk.vtkPolyData()
@@ -62,11 +49,12 @@ def get_slice_data(inp_polydata,param,num_slices = True):
         # z_vals based on fixed height of each layer
         num_z_vals = int(np.floor((bbox[5] - bbox[4]+0.001)/param))
         z_vals = np.linspace(bbox[4]+0.001,bbox[5],num_z_vals+1)[0:-1]
-
+    
     slice_actor_collection = vtk.vtkAssembly()
     slices = []
-    
+    break_point_indices = []
     for z in z_vals:
+        loop_list = []
         plane = vtk.vtkPlane()
         plane.SetNormal(0, 0, 1)
         plane.SetOrigin(xy_origin[0], xy_origin[1], z)
@@ -99,43 +87,84 @@ def get_slice_data(inp_polydata,param,num_slices = True):
             #generate local index of points that comprise each loop
             poly_point_ind = np.asarray(loops)[index + 1:index + 1 + poly_point_count]
             #push to slices
-            slices.append(np.asarray(loop_points)[poly_point_ind,:])
+            loop_list.append(np.asarray(loop_points)[poly_point_ind,:])
             index += poly_point_count + 1
-
+            
+        #add to overall slice data
+        slices.append(loop_list)
+        break_point_indices.append([])
         # Create a mapper and actor for visualization
         cutter_mapper = vtk.vtkPolyDataMapper()
         cutter_mapper.SetInputConnection(cutter.GetOutputPort())
 
         actor = vtk.vtkActor()
-        actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Tomato'))
+        actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('LightSteelBlue'))
         actor.GetProperty().SetLineWidth(2)
         actor.SetMapper(cutter_mapper)
         slice_actor_collection.AddPart(actor)
-
-    #debug
-    # np.savetxt('new_outlines.csv', slices[0], delimiter=',')        
-        
-    return slices, slice_actor_collection
-
-def get_sub_slice_data(outlines, threshold):
     
-    #make agglomerative clustering object
-    agg_cluster = AgglomerativeClustering(n_clusters = None, metric ='euclidean', memory=None, connectivity=None, compute_full_tree='auto', linkage='single', distance_threshold=threshold, compute_distances=False)
-    
-    new_outlines=[]
-    for outline in outlines:
-        clustering = agg_cluster.fit(outline[:,0:2])
-        #make list of truth arrays for each cluster
-        for i in range(clustering.n_clusters_):
-            # check if the cluster is a closed loop
-            if np.array_equal(clustering.labels_,clustering.labels_[::-1]):
-                new_outlines.append(outline[(clustering.labels_ == i),:]) 
-            else:
-                #if the cluster is not a closed loop, close it
-                closed_loop = np.vstack((outline[(clustering.labels_ == i)],outline[(clustering.labels_ == i)][0]))
-                new_outlines.append(closed_loop)
-    # np.savetxt('new_outlines.csv', new_outlines[-3], delimiter=',')
-    return new_outlines
+    #now check for encompassed outlines on each slice
+    #for each slice, check if there are loops that are inside of other loops recursively.
+    break_point_indices = [[] for s in slices] #pre-allocate
+    k = 0
+    for s in slices:
+        #if there's only one loop, then it's a parent
+        if len(s) == 1:
+            k+=1 #maintain count through slices, but skip the rest
+            continue
+
+        #otherwise, make truth table of parent and children loops
+        outer = np.full((len(s), len(s)), False, dtype=bool)
+        for i in range(len(s)):
+            for j in range(len(s)):
+                outer[i,j] = Polygon(s[i]).contains(Polygon(s[j]))
+                
+        #if the diagonal of the truth table is identity, then all loops are parents, otherwise:
+        if not np.array_equal(np.diag([True for i in range(len(outer))]), outer):
+            collection = np.vstack((np.sum(outer, axis=0),np.sum(outer, axis=1)))
+            
+            ind = np.lexsort((collection[1,:],collection[0,:])) #sort by parent, then by child
+            collection = collection[:,ind]
+            #re-index the list of local loops
+            local_slice = [s[ind[i]] for i in range(len(ind))]
+            
+            intervals = sum(1- n % 2 for n in collection[0,:]) -1
+            
+            even_values = [x for x in list(set(collection[0,:])) if x % 2 == 0] #removing duplicates, how many intervals there are
+            last_even = []
+            first_even = []
+            for value in even_values:
+                first_even.append(min(loc for loc, val in enumerate(collection[0,:]) if val == value))
+                last_even.append(max(loc for loc, val in enumerate(collection[0,:]) if val == value))
+                
+            #interval 0 is zero to the last of the next even numbers
+            #interval n is the last of the next odd numbers to the last of the even numbers
+            #concatenate entries of local_slice from the first_even -1 to the last_even
+            concat_slice = []
+            concat_ind = []
+            for i in range(len(even_values)):
+                # print('catenating ',(first_even[i]-1), 'to', last_even[i]) #debug, stop val is -1
+                list_to_pad = local_slice[(first_even[i]-1):last_even[i]+1]
+                end_ind = [len(arr) for arr in list_to_pad[:-1]] #exclude the last entry in list_to_pad
+                # head = list(chain(*[(arr, pad) for arr in list_to_pad[:-1]])) #DEPRECATED create list with 'pad' between entries
+                concat_slice.append(np.concatenate(list_to_pad)) #concatenate all elements
+                concat_ind.append(end_ind)
+            #indices of loops that have been removed:
+            removed_ind = []
+            for i in range(len(even_values)):
+                for j in range((first_even[i]-1),last_even[i]+1):
+                    removed_ind.append(j)
+            #remove loops that have been concatenated
+            local_slice = [i for j, i in enumerate(local_slice) if j not in removed_ind]
+            #add remainder
+            concat_slice = concat_slice + local_slice
+            concat_ind = concat_ind + [[] for entry in local_slice]
+            slices[k] = concat_slice
+            break_point_indices[k] = concat_ind
+
+        k+=1
+    return slices, break_point_indices, slice_actor_collection
+
 
 def get_polydata_from_stl(fname):
     """
@@ -154,94 +183,6 @@ def get_polydata_from_stl(fname):
 
     return polydata
 
-def get_skeleton_dict(outline,whole_angle,step_size,suggested_hatching_offset):
-    """
-    Returns a dictionary of skeleton lines for each hatch angle
-
-    skeleton_dict structure:
-    {
-        hatch_angle1: {  
-            skeleton1: [midpoint1, midpoint2, ...]
-            skeleton2: [midpoint1, midpoint2, ...]
-        }
-        hatch_angle2: {
-            skeleton1: [midpoint1, midpoint2, ...]
-            skeleton2: [midpoint1, midpoint2, ...]
-        }
-    }
-    """
-
-    midpoint_line_dict = {hatch_angle: [] for hatch_angle in np.arange(0, whole_angle, step_size)}
-    for hatch_angle in np.arange(0, whole_angle, step_size):
-        intersecting_lines, _, num_of_line_list = get_intersections(outline,hatch_angle,
-                                                                    suggested_hatching_offset,0.5)
-
-        # Get all the unique values in num_of_line_list
-        lines_index_list = list(set(num_of_line_list))
-        midpoint_line_dict[hatch_angle] = {line_index: [] for line_index in lines_index_list}
-        
-        for line_index, number_of_line in enumerate(num_of_line_list):
-            if number_of_line in lines_index_list:
-                midpoint = (intersecting_lines[line_index][0] + intersecting_lines[line_index][1]) / 2
-                midpoint_line_dict[hatch_angle][number_of_line].append(midpoint)
-    return midpoint_line_dict
-
-def get_central_line_path(skeleton_dict, entry):
-    """
-    Returns a list of central line paths for each entry
-    """
-    certral_line_path = []
-    for rotate_angle_line1, path_index_line1 in skeleton_dict.items():
-        for skeleton_line1 in path_index_line1.values():
-            if len(skeleton_line1) > 1:
-                for line_index1 in range(len(skeleton_line1) - 1):
-                    P1 = skeleton_line1[line_index1][:2]
-                    P2 = skeleton_line1[line_index1 + 1][:2]
-                    line1 = [P1, P2]
-                    for rotate_angle_line2, path_index_line2 in skeleton_dict.items():
-                        if rotate_angle_line2 != rotate_angle_line1:
-                            for skeleton_line2 in path_index_line2.values():
-                                if len(skeleton_line2) > 1:
-                                    for line_index2 in range(len(skeleton_line2) - 1):
-                                        P3 = skeleton_line2[line_index2][:2]
-                                        P4 = skeleton_line2[line_index2 + 1][:2]
-                                        line2 = [P3, P4]
-                                        local_intersection = line_intersection(line1, line2)
-                                        if local_intersection is not None:
-                                            certral_line_path.append(np.array([local_intersection[0],
-                                                                    local_intersection[1],entry]))
-    return np.array(certral_line_path)
-
-def reorder_points_based_on_intersetion(cleaned_certral_line_path, outline):
-    """
-    Reorder the points in the central line path based on the intersection with the outline
-    If intersection is found, the points before the intersection will be reversed
-    if the distance between the first point and the intersection is less than 1, 
-    (this needs to be adjusted based on the actual distance, need to be improved)
-    the points after the interseciton will also be reversed.
-    """
-    reordered_certral_line_path = []
-    for line1_index in range(len(cleaned_certral_line_path) - 1):
-        P1 = cleaned_certral_line_path[line1_index]
-        P2 = cleaned_certral_line_path[line1_index + 1]
-        line1 = [P1, P2]
-        for line2_index in range(len(outline) - 1):
-            P3 = outline[line2_index]
-            P4 = outline[line2_index + 1]
-            line2 = [P3, P4]
-            local_intersection = line_intersection(line1, line2)
-            if local_intersection is not None:
-                distance = np.linalg.norm(np.array(P2) - np.array(cleaned_certral_line_path[0]))
-                # To be improved
-                if distance < 1:
-                    reordered_certral_line_path = np.concatenate((cleaned_certral_line_path[:line1_index+1][::-1], 
-                                                cleaned_certral_line_path[line1_index+1:]))
-                    return reordered_certral_line_path
-                else:
-                    reordered_certral_line_path = np.concatenate((cleaned_certral_line_path[:line1_index+1][::-1], 
-                                                cleaned_certral_line_path[line1_index+1:][::-1]))
-                    return reordered_certral_line_path
-    return reordered_certral_line_path
 
 def actor_from_polydata(polydata):
     """
@@ -255,27 +196,9 @@ def actor_from_polydata(polydata):
     stl_actor = vtk.vtkActor()
     stl_actor.SetMapper(mapper)
 
-    stl_actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('Gray'))
+    stl_actor.GetProperty().SetColor(vtk.vtkNamedColors().GetColor3d('PowderBlue'))
 
     return stl_actor
-
-def get_starting_point(inp):
-    """
-    get the starting point of the outline based on the distance between points
-    if the distance between two points is the largest, the starting point is the first point
-    """
-    
-    points = inp[:,0:2]
-    dist = []
-    for i in range(len(points)-1):
-        distance = np.linalg.norm(points[i+1] - points[i])
-        dist.append(distance)
-        
-    mean = np.mean(dist)
-    std = np.std(dist)
-    z_scores = [(x - mean) / std for x in dist]
-    outliers = np.argmax(z_scores)
-    return outliers
 
 def sort_ccw(inp):
     """
@@ -383,20 +306,20 @@ def do_transform(points, T):
 
 def get_limits(pts, factor = 0.1):
     '''
-    Returns a bounding box with x,y values bumped out by factor
+    Returns a bounding box with x,y values bumped out by factor, ignores NaNs
     '''
-    RefMin = np.amin(pts,axis=0)
-    RefMax = np.amax(pts,axis=0)
+    RefMin = np.nanmin(pts,axis=0)
+    RefMax = np.nanmax(pts,axis=0)
 
     extents=RefMax-RefMin #extents
-    rl=factor*(np.amin(extents[0:2])) #linear 'scale' to set up interactor
+    rl=factor*(np.nanmin(extents[0:2])) #linear 'scale' to set up interactor
     return [RefMin[0]-rl, \
       RefMax[0]+rl, \
       RefMin[1]-rl, \
       RefMax[1]+rl, \
       RefMin[2],RefMax[2]]
 
-def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
+def get_intersections(outline, angular_offset, width, bead_offset = 0.5, break_point_index = None):
     """
     Returns intersections running from a series of lines drawn from -x to +x, -y to +y for a constant z value
     Params:
@@ -404,11 +327,12 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
         angular_offset - rotation which intersection lines are solved for
         width - target bead width
         bead_offset - ratio of bead width to offset each path (0.5 = 50%)
+        break_point_index - index of the outline where a single parent outline terminates and a single child outline begins
     Returns:
         path_list - A list of intersecting lines with dual entry Numpy arrays describing the start and end of each line
         actual_bead_offset - and the bead_offset achieved
     """
-    
+
     trans_cent = np.eye(4)
     #move outline to centroid
     trans_cent[0:3,-1] = -np.mean(outline, axis=0)
@@ -418,6 +342,7 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
     a = np.deg2rad(angular_offset) #negative for counterclockwise
     trans[0:2,0:2]=np.array([[np.cos(a),-np.sin(a)],[np.sin(a),np.cos(a)]])
     X = do_transform(X,trans)
+    
     zval = np.mean(X[:,-1])
     
     limits = get_limits(X,0.)
@@ -441,8 +366,17 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
         line1 = tuple([tuple(x) for x in line.tolist()])
 
         point_index = 0
-        
         for i in range(len(X)-1):
+            #TO AMEND!!: should iterate for more break_points than one.
+            if break_point_index is not None:# and len(break_point_index) == 1:
+                if i == break_point_index[0]-1:
+                    continue
+            
+                # for j in break_point_index:
+                    # if i == j-1:
+                        # print('continuing',break_point_index,i,j-1)
+                        # continue
+                
             line2 = tuple([tuple(x) for x in X[i:i+2,:]])
             local_intersection = line_intersection(line1, line2)
             if local_intersection is not None:
@@ -451,6 +385,8 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
                 intersections.append(np.array([local_intersection[0],local_intersection[1],zval]))
         if point_index != previous_max_point_num:
             previous_max_point_num = point_index
+            if previous_max_point_num % 2 != 0:
+                print('Warning: odd number of intersections found')
             mode_change_times += 1
         temp_list = [x + mode_change_times*100 for x in range(point_index)]
         temp_list = [str(x) for x in temp_list]
@@ -474,6 +410,20 @@ def get_intersections(outline, angular_offset, width, bead_offset = 0.5):
         line_index_list = []
     #return intersections , actual bead offset
     return path_list, actual_bead_offset, line_index_list
+
+def simple_fill(outline, width = 1, theta = 0, offset = 1):
+    '''
+    Returns paths corresponding to a simple fill by hatching
+    '''
+    path_list = []
+    midline = offset_poly(outline,-width*0.5)
+    innie = offset_poly(outline,-width)
+    intersecting_lines, param, _ = get_intersections(
+                                innie,theta,width,offset)
+    path_list.append(midline)
+    path_list.extend(intersecting_lines)
+    return path_list
+
 
 def line_intersection(line1, line2):
     '''
@@ -524,13 +474,11 @@ def line_intersection(line1, line2):
     if 0.0 < s < 1.0 and 0.0 < t < 1.0:
         return x1 + t * dx1, y1 + t * dy1
 
-def respace_equally(X,val):
+def respace_equally(X,val, closed = False):
     '''
-    Takes X, a 2D array of points, respaces them on the basis of 'val', either a floating point value of what the target interval between points is, or an integer which is the total number of points. Returns the new array of points, the perimeter and the number of points.
+    Takes X, a 2D array of points, respaces them on the basis of 'val', either a floating point value of what the target interval between points is, or an integer which is the total number of points. Returns the new array of points, the perimeter and the number of points. Setting closed to be True will force the last point to be the same as the first point.
     '''
-    closed = False
-    if (X[0,:] == X[-1,:]).all():
-        closed = True
+
     distance=np.sqrt(np.sum(np.diff(X,axis=0)**2,axis=1))
     s=np.insert(np.cumsum(distance),0,0)
     Perimeter=np.sum(distance)
@@ -548,13 +496,15 @@ def respace_equally(X,val):
     Ynew=fy(sNew)
     
     X_new=np.stack((Xnew,Ynew),axis=-1)
-    if not closed:
+    if closed:
         X_new = np.vstack((X_new, X_new[0,:]))#make sure last point is the same as the first point
     return X_new,Perimeter,nPts
 
 def offset_poly(poly, offset):
     '''
-    Uses pyclipper to offset param poly and return an offset polygon according to offset param. poly is 3D (XYZ by N), and returns the same.
+    Uses pyclipper to offset param poly and return an offset polygon according to offset param.
+    Assumes that the poly is located at a fixed z value
+    Poly is 3D (XYZ by N), and returns the same.
     '''
     zval = np.mean(poly[:,-1])
     X = tuple(map(tuple, poly[:,:2]))
@@ -564,9 +514,12 @@ def offset_poly(poly, offset):
     scaled_result = pco.Execute(scale_to_clipper(offset))
     
     result = scale_from_clipper(scaled_result)
-    two_d = np.asarray(result[0])
+    if result:
+        two_d = np.asarray(result[0])
     
-    #make sure the number of points and therefore polygon interval is preserved
-    two_d = respace_equally(two_d,len(poly))[0]
-    
-    return np.column_stack((two_d,np.ones(len(two_d))*zval)) 
+        # #make sure the number of points and therefore polygon interval is preserved
+        # two_d = respace_equally(two_d,len(poly))[0]
+        
+        return np.column_stack((two_d,np.ones(len(two_d))*zval))
+    else:
+        return None
